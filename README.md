@@ -1,5 +1,4 @@
 # InSAR-on-Sentinel-1-TOPS-data
-GPU-accelerated InSAR processing on Sentinel-1 TOPS data
 This code is developed under Visual Studio 2013 and CUDA toolkit 8.0.
 The software makes use of Graphic Processing Unit to perform Geometric coregistration, resampling, ESD and Coherence Estimation on Sentinel-1 TOPS data.
 
