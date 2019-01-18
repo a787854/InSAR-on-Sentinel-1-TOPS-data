@@ -5,9 +5,11 @@ The software makes use of Graphic Processing Unit to perform Geometric coregistr
 This software dependents on two libraries:
 
 1.TinyXml2:
+
 Please find it at:https://github.com/leethomason/tinyxml2
 
 2.GDAL.
+
 
 Platform:
 
