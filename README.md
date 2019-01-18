@@ -21,6 +21,7 @@ GPU: Nvidia GTX Titan black  CPU:Intel I7-6700K
 
 
 Config File:
+
 process_dir= Current Working Directory
 
 masterpath=The Folder of Master Image
