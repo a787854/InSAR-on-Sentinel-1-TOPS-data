@@ -14,7 +14,9 @@ Please find it at:https://github.com/leethomason/tinyxml2
 Platform:
 
 It is suggested to use the GPUs with powerful double floating computing.
-Otherwise, the accuracy of coregistration is not guaranteed.
+Otherwise, the accuracy of coregistration is not guaranteed. 
+To achieve a better performance, the driver mode of GPU should be set as TCC mode. 
+
 
 Our testing platform:
 GPU: Nvidia GTX Titan black  CPU:Intel I7-6700K
