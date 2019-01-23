@@ -32,7 +32,7 @@ slavepath=The Folder of Slave Image
 
 preciseOrbitMaster=The Path to the Master Precise Orbit File
 
-preciseOrbitSlave=The Path to the S Precise Orbit File
+preciseOrbitSlave=The Path to the Slave Precise Orbit File
 
 SpecificDemPath=The Path to DEM File (Tiff format only)
 
