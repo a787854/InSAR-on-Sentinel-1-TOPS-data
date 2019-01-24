@@ -36,6 +36,10 @@ preciseOrbitSlave=The Path to the Slave Precise Orbit File
 
 SpecificDemPath=The Path to DEM File (Tiff format only)
 
+burst0=The Start Burst
+
+burstN=The Stop Burst
+
 firstsubswath=The Start Proccesing Subswath
 
 lastsubswath=The End Proccesing Subswath
