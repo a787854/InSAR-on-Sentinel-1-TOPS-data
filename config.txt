@@ -5,6 +5,8 @@ preciseOrbitMaster=The Path to the Master Precise Orbit File
 preciseOrbitSlave=The Path to the Master Precise Orbit File
 SpecificDemPath=The Path to DEM File (Tiff format only)
 firstsubswath=The Start Proccesing Subswath
+burst0=The start burst
+burstN=The stop burst
 lastsubswath=The End Proccesing Subswath
 polarisation= Specific polarisation types
 
