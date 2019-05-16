@@ -506,11 +506,17 @@ float* cohdata
 	int PitchPixels = Pitch / sizeof(cuComplex);
 	//For horizontal
 	//int Nstep = PitchPixels / 8;
-
+	PitchPixels = PitchPixels + 1;
 	if (PitchPixels% blockSz.x != 0)
 	{
-		cout << "Errors:PitchSize is not multiple of 32!" << endl;
-		return;
+		cout << "Warning:PitchSize is not multiple of 32!" << endl;
+		cout << "Do not worry! we can handle it!" << endl;
+		cudaFree(d_Sum1);
+		cudaFree(d_Power1);
+		Pitch = MultipleOf32(PitchPixels)*sizeof(cuComplex);
+		cudaMalloc((void**)&d_Sum1, Pitch*Lines);
+		cudaMalloc((void**)&d_Power1, Pitch*Lines);
+		PitchPixels = Pitch / sizeof(cuComplex);
 
 	}
 	int numX = PitchPixels;
@@ -581,7 +587,6 @@ float* cohdata
 	dim3 blocks = dim3((Dw + threadsV.x - 1) / threadsV.x, (Dh - 1 + threadsV.y - 1) / threadsV.y);
 
 	
-	cudaDeviceSynchronize();
 
 	/*Hide the time for coping back the coherence map*/
 	int PartLines = Lines / 4;
@@ -590,7 +595,7 @@ float* cohdata
 
 	//
 	bool BasicOrNot = false;
-	bool OverlapOrNot = true;
+	bool OverlapOrNot = false;
 
 	
 	if (OverlapOrNot)
@@ -650,8 +655,8 @@ float* cohdata
 		CpCoh2 << <Outblocks, threads,0, stream[2] >> >
 			(d_CohMat_Amp , d_Sum1 , d_Power1 ,d_slaveArray ,
 			Pitch, FloatPitch, Pitch, Dh);
-		cudaMemcpy2DAsync(cohdata , Dw*sizeof(float),
-			d_CohMat_Amp, FloatPitch, Dw*sizeof(float), Dh, cudaMemcpyDeviceToHost, stream[2]);
+		cudaMemcpy2D(cohdata , Dw*sizeof(float),
+			d_CohMat_Amp, FloatPitch, Dw*sizeof(float), Dh, cudaMemcpyDeviceToHost);
 	}
 
 	
@@ -659,8 +664,8 @@ float* cohdata
 	{
 		Cohbasic << <Outblocks, threads, 0, stream[3] >> >(d_CohMat_Amp, Dh, Dw, FloatPitch);
 
-		cudaMemcpy2DAsync(cohdata, Dw*sizeof(float),
-			d_CohMat_Amp, FloatPitch, Dw*sizeof(float), Dh, cudaMemcpyDeviceToHost, stream[3]);
+		cudaMemcpy2D(cohdata, Dw*sizeof(float),
+			d_CohMat_Amp, FloatPitch, Dw*sizeof(float), Dh, cudaMemcpyDeviceToHost);
 	}
 
 	
@@ -673,7 +678,7 @@ float* cohdata
 
 	cudaEventSynchronize(g_stop);
 	cudaEventElapsedTime(&time_cost2, g_start, g_stop);
-	cout << "coherence kernel duration:" << time_cost2 << endl;
+	cout << "coherence kernel duration:" << time_cost2<<"ms"<< endl;
 	cudaEventDestroy(g_start);
 	cudaEventDestroy(g_stop);
 
