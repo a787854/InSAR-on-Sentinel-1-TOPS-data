@@ -9,6 +9,7 @@
 //#include <helper_cuda.h>
 #include <cuda_occupancy.h>
 #include "cuConstants.cuh"
+#include "cuda_profiler_api.h"
 #undef  __CUDA_INTERNAL_COMPILATION__
 #include <math.h>
 #include<time.h>
@@ -106,8 +107,8 @@ __device__  inline cuComplex CmulfFloat(cuComplex Left, float Right)
 
 __device__ inline void GetIndexes(double x, int Indexed[2])
 {
-	Indexed[0] = int(x);
-	Indexed[1] = int((x - Indexed[0]) * c_Interval + 0.5);
+	Indexed[0] = trunc(x);
+	Indexed[1] = ((x - Indexed[0]) * c_Interval + 0.5);
 }
 
 
@@ -320,7 +321,7 @@ double* SlaveRg, size_t CorrPitch_1)
 				sum1 = make_cuComplex(0.0f, 0.0f);
 			}
 
-			/*ÐÐ¾í»ý»ñµÃ×îÖÕ½á¹û*/
+			/*è¡Œå·ç§¯èŽ·å¾—æœ€ç»ˆç»“æžœ*/
 			sum = cuCaddf(cuCaddf(cuCaddf(cuCaddf(cuCaddf(cuCmulf(Result[0], kernelL[0]), cuCmulf(Result[1], kernelL[1])), cuCmulf(Result[2], kernelL[2])), cuCmulf(Result[3], kernelL[3])),
 				cuCmulf(Result[4], kernelL[4])), cuCmulf(Result[5], kernelL[5]));
 			sum1 = cuCaddf(cuCaddf(cuCaddf(cuCaddf(cuCaddf(cuCmulf(Result1[0], kernelL[0]), cuCmulf(Result1[1], kernelL[1])), cuCmulf(Result1[2], kernelL[2])), cuCmulf(Result1[3], kernelL[3])),
@@ -345,12 +346,12 @@ double* SlaveRg, size_t CorrPitch_1)
 
 
 __global__ void
-resample_texture_kernel_12p_overlap_warpFunction
+Interpolation_12p
 (cuComplex *output, int LineOffset, int Lines, size_t CorrPitch_1)
 {
 
-	const int row = blockIdx.y*blockDim.y + threadIdx.y;
-	const int col = blockIdx.x*blockDim.x + threadIdx.x;
+	const unsigned int row = blockIdx.y*blockDim.y + threadIdx.y;
+	const unsigned int col = blockIdx.x*blockDim.x + threadIdx.x;
 
 	cuComplex * rowoutput = (cuComplex *)((char*)output + row*CorrPitch_1);
 	
@@ -361,11 +362,10 @@ resample_texture_kernel_12p_overlap_warpFunction
 	{
 		
 		double Temp[2];
-		Temp[0] = normalizeWarp((double)col, c_MasterBox[0], c_MasterBox[1]);
-		Temp[1] = normalizeWarp((double)(row + LineOffset + c_mY0), c_MasterBox[2], c_MasterBox[3]);
+		Temp[0] = normalizeWarp(col, c_MasterBox[0], c_MasterBox[1]);
+		Temp[1] = normalizeWarp(row +LineOffset + c_mY0, c_MasterBox[2], c_MasterBox[3]);
 
 		
-
 
 	
 		
@@ -377,14 +377,7 @@ resample_texture_kernel_12p_overlap_warpFunction
 		GetIndexes(my_polyval(Temp[1], Temp[0], c_CpmRg), IndexesP);
 
 		
-		/*if (row == 100 && col == 1000)
-		{
-			
-			printf("c_MasterBox[0]:%d\n", c_MasterBox[0]);
-			printf("c_MasterBox[1]:%d\n", c_MasterBox[1]);
-			printf("c_MasterBox[2]:%d\n", c_MasterBox[2]);
-			printf("c_MasterBox[3]:%d\n", c_MasterBox[3]);
-		}*/
+	
 
 
 		if (IndexesL[0] > c_sYmax || IndexesL[0]<c_sY0
@@ -444,6 +437,8 @@ resample_texture_kernel_12p_overlap_warpFunction
 			kernelP[11] = tex2D(tex_kernelRg, 11, IndexesP[1]);
 
 
+		
+
 			cuComplex tempComplex;
 
 
@@ -457,67 +452,53 @@ resample_texture_kernel_12p_overlap_warpFunction
 
 			
 			
-			//if (row == 100 && col == 1000)
-			//{
-			//	/*	printf("Resampled:(%lf,%lf)\n", rowoutput[col].x, rowoutput[col].y);
-			//	printf("sum:(%lf,%lf)\n", sum.x, sum.y);
-			//	printf("sum1:%lf\n", sum1);
-			//	printf("sin:%lf\n", Temp[0]);
-			//	printf("cos:%lf\n", Temp[1]);*/
-			//	printf("IndexP:%d\n", IndexesP[0]);
-			//	printf("IndexL:%d\n", IndexesL[0]);
-			//	printf("Slave:(%lf,%lf)\n", tex2D(tex_slave, IndexesP[0], IndexesL[0]).x, 
-			//		tex2D(tex_slave, IndexesP[0], IndexesL[0]).y);
-			//	printf("Phase:%lf\n", tex2D(tex_PhaseArray, IndexesP[0], IndexesL[0]));
-			//}
-
-
 
 			// Partially unroll the loop to reduce register pressure
 			// Interpolate the slave image at first
 			for (int j = 0; j < 12; ++j)
 			{
+				IndexesL[1] = IndexesL[0] + j;
 				tempComplex =
-					cuCaddf(CmulfFloat(tex2D(tex_slave, IndexesP[0] + 11, IndexesL[0] + j), kernelP[11]),
-					cuCaddf(CmulfFloat(tex2D(tex_slave, IndexesP[0] + 10, IndexesL[0] + j), kernelP[10]),
-					cuCaddf(CmulfFloat(tex2D(tex_slave, IndexesP[0] + 9, IndexesL[0] + j), kernelP[9]),
-					cuCaddf(CmulfFloat(tex2D(tex_slave, IndexesP[0] + 8, IndexesL[0] + j), kernelP[8]),
-					cuCaddf(CmulfFloat(tex2D(tex_slave, IndexesP[0] + 7, IndexesL[0] + j), kernelP[7]),
-					cuCaddf(CmulfFloat(tex2D(tex_slave, IndexesP[0] + 6, IndexesL[0] + j), kernelP[6]),
-					cuCaddf(CmulfFloat(tex2D(tex_slave, IndexesP[0] + 5, IndexesL[0] + j), kernelP[5]),
-					cuCaddf(CmulfFloat(tex2D(tex_slave, IndexesP[0] + 4, IndexesL[0] + j), kernelP[4]),
-					cuCaddf(CmulfFloat(tex2D(tex_slave, IndexesP[0] + 3, IndexesL[0] + j), kernelP[3]),
-					cuCaddf(CmulfFloat(tex2D(tex_slave, IndexesP[0] + 2, IndexesL[0] + j), kernelP[2]),
-					cuCaddf(CmulfFloat(tex2D(tex_slave, IndexesP[0], IndexesL[0] + j), kernelP[0]),
-					CmulfFloat(tex2D(tex_slave, IndexesP[0] + 1, IndexesL[0] + j), kernelP[1])
+					cuCaddf(CmulfFloat(tex2D(tex_slave, IndexesP[0] + 11,IndexesL[1]), kernelP[11]),
+					cuCaddf(CmulfFloat(tex2D(tex_slave, IndexesP[0] + 10,IndexesL[1]), kernelP[10]),
+					cuCaddf(CmulfFloat(tex2D(tex_slave, IndexesP[0] + 9,IndexesL[1]), kernelP[9]),
+					cuCaddf(CmulfFloat(tex2D(tex_slave, IndexesP[0] + 8,IndexesL[1]), kernelP[8]),
+					cuCaddf(CmulfFloat(tex2D(tex_slave, IndexesP[0] + 7,IndexesL[1]), kernelP[7]),
+					cuCaddf(CmulfFloat(tex2D(tex_slave, IndexesP[0] + 6,IndexesL[1]), kernelP[6]),
+					cuCaddf(CmulfFloat(tex2D(tex_slave, IndexesP[0] + 5,IndexesL[1]), kernelP[5]),
+					cuCaddf(CmulfFloat(tex2D(tex_slave, IndexesP[0] + 4,IndexesL[1]), kernelP[4]),
+					cuCaddf(CmulfFloat(tex2D(tex_slave, IndexesP[0] + 3,IndexesL[1]), kernelP[3]),
+					cuCaddf(CmulfFloat(tex2D(tex_slave, IndexesP[0] + 2,IndexesL[1]), kernelP[2]),
+					cuCaddf(CmulfFloat(tex2D(tex_slave, IndexesP[0],IndexesL[1]), kernelP[0]),
+					CmulfFloat(tex2D(tex_slave, IndexesP[0] + 1,IndexesL[1]), kernelP[1])
 					)))))))))));
 
 				sum = cuCaddf(sum, CmulfFloat(tempComplex, kernelL[j]));
 			}
 
-
+		
 
 			//Interpolate the deramping phase
 			for (int j = 0; j < 12; ++j)
 			{
-
-				tempFloat = (double)tex2D(tex_PhaseArray, IndexesP[0], IndexesL[0] + j)* kernelP[0]
-					+ (double)tex2D(tex_PhaseArray, IndexesP[0] + 1, IndexesL[0] + j)*kernelP[1]
-					+ (double)tex2D(tex_PhaseArray, IndexesP[0] + 2, IndexesL[0] + j)*kernelP[2]
-					+ (double)tex2D(tex_PhaseArray, IndexesP[0] + 3, IndexesL[0] + j)*kernelP[3]
-					+ (double)tex2D(tex_PhaseArray, IndexesP[0] + 4, IndexesL[0] + j)*kernelP[4]
-					+ (double)tex2D(tex_PhaseArray, IndexesP[0] + 5, IndexesL[0] + j)*kernelP[5]
-					+ (double)tex2D(tex_PhaseArray, IndexesP[0] + 6, IndexesL[0] + j)*kernelP[6]
-					+ (double)tex2D(tex_PhaseArray, IndexesP[0] + 7, IndexesL[0] + j)*kernelP[7]
-					+ (double)tex2D(tex_PhaseArray, IndexesP[0] + 8, IndexesL[0] + j)*kernelP[8]
-					+ (double)tex2D(tex_PhaseArray, IndexesP[0] + 9, IndexesL[0] + j)*kernelP[9]
-					+ (double)tex2D(tex_PhaseArray, IndexesP[0] + 10, IndexesL[0] + j)*kernelP[10]
-					+ (double)tex2D(tex_PhaseArray, IndexesP[0] + 11, IndexesL[0] + j)*kernelP[11];
+				IndexesL[1] = IndexesL[0] + j;
+				tempFloat = (double)tex2D(tex_PhaseArray, IndexesP[0],IndexesL[1])* kernelP[0]
+					+ (double)tex2D(tex_PhaseArray, IndexesP[0] + 1,IndexesL[1])*kernelP[1]
+					+ (double)tex2D(tex_PhaseArray, IndexesP[0] + 2,IndexesL[1])*kernelP[2]
+					+ (double)tex2D(tex_PhaseArray, IndexesP[0] + 3,IndexesL[1])*kernelP[3]
+					+ (double)tex2D(tex_PhaseArray, IndexesP[0] + 4,IndexesL[1])*kernelP[4]
+					+ (double)tex2D(tex_PhaseArray, IndexesP[0] + 5,IndexesL[1])*kernelP[5]
+					+ (double)tex2D(tex_PhaseArray, IndexesP[0] + 6,IndexesL[1])*kernelP[6]
+					+ (double)tex2D(tex_PhaseArray, IndexesP[0] + 7,IndexesL[1])*kernelP[7]
+					+ (double)tex2D(tex_PhaseArray, IndexesP[0] + 8,IndexesL[1])*kernelP[8]
+					+ (double)tex2D(tex_PhaseArray, IndexesP[0] + 9,IndexesL[1])*kernelP[9]
+					+ (double)tex2D(tex_PhaseArray, IndexesP[0] + 10,IndexesL[1])*kernelP[10]
+					+ (double)tex2D(tex_PhaseArray, IndexesP[0] + 11,IndexesL[1])*kernelP[11];
 
 				
 				
 				sum1 = sum1 + tempFloat * kernelL[j];
-			
+				//sum1 = __fma_rn(tempFloat, kernelL[j], sum1);
 
 
 			}
@@ -530,22 +511,8 @@ resample_texture_kernel_12p_overlap_warpFunction
 			rowoutput[col] = cuCmulf(sum, make_cuComplex(Temp[1], -Temp[0]));
 
 		
-			//if (row == 100 && col == 1000)
-			//{
-
-
-			//	printf("Resampled:(%lf,%lf)\n", rowoutput[col].x, rowoutput[col].y);
-			//	printf("sum:(%lf,%lf)\n", sum.x, sum.y);
-			//	printf("sum1:%lf\n", sum1);
-			//	printf("sin:%lf\n", sin(sum1));//Temp[0]);
-			//	printf("cos:%lf\n", cos(sum1));//Temp[1]);
-			//	printf("IndexP:%d\n", IndexesP[1]);
-			//	//printf("IndexL:%d\n", IndexesL[0]);
-			//	//printf("FirstLinesum:(%lf,%lf)\n", sum.x,sum.y);
-			//	//printf("Phase:%lf\n", tex2D(tex_PhaseArray, IndexesP[0], IndexesL[0]));
-			//}
-			
-
+	
+		
 
 		}
 	}
@@ -553,7 +520,420 @@ resample_texture_kernel_12p_overlap_warpFunction
 }
 
 
+__global__ void
+resample_texture_kernel_12p_warpFunction_raw
+(cuComplex *output,
+cuComplex* slaveArray,
+float *phaseArray, 
+float *kernelAz, 
+float *kernelRg, 
+size_t d_pitch1,
+size_t d_pitch2,
+int Lines,
+size_t CorrPitch_1
+)
+{
 
+
+	const int row = blockIdx.y*blockDim.y + threadIdx.y;
+	const int col = blockIdx.x*blockDim.x + threadIdx.x;
+
+	cuComplex * rowoutput = (cuComplex *)((char*)output + row*CorrPitch_1);
+
+	// adjust pCorr to point to row
+	//output = (float *)((char*)output + row*CorrPitch);
+
+	int Npoints2m1 = 12 / 2 - 1;
+	//int ncols = SlavePitch / 8;
+
+
+
+	if (row < Lines && col < c_mPixels)
+	{
+	
+
+		double normalizeP = normalizeWarp((double)col, c_MasterBox[0], c_MasterBox[1]);
+		double normalizeL = normalizeWarp((double)row, c_MasterBox[2], c_MasterBox[3]);
+
+		double SlavePos_x = my_polyval(normalizeL, normalizeP, c_CpmRg);
+		double SlavePos_y = my_polyval(normalizeL, normalizeP, c_CpmAz) + d_AzimuthShift;
+		
+
+		int  fl_interpL = int(SlavePos_y);
+		int fl_interpP = int(SlavePos_x);
+
+
+		int indexL = fl_interpL - c_sY0;
+		int indexP = fl_interpP - c_sX0;
+
+
+
+		if (fl_interpL > c_sYmax || fl_interpL<c_sY0
+			|| fl_interpP>c_sXmax || fl_interpP < c_sX0)
+		{
+
+			rowoutput[col] = make_cuComplex(0.0f, 0.0f);
+
+		}
+
+		else if (fl_interpL>c_sYmax - Npoints2m1 - 2 || fl_interpL<c_sY0 + Npoints2m1
+			|| fl_interpP>c_sXmax - Npoints2m1 - 2 || fl_interpP < c_sX0 + Npoints2m1)
+		{
+
+		
+			cuComplex* rowSlave = (cuComplex *)((char*)slaveArray + indexL*d_pitch2);
+			float* rowPhase = (float *)((char*)phaseArray + indexL*d_pitch1);
+			cuComplex Slave = rowSlave[indexP];//tex2D(tex_slave, indexP, indexL);//SlaveArray[indexL*ncols + indexP];
+			float samplePhase = rowPhase[indexP];  //tex2D(tex_PhaseArray, indexP, indexL);
+
+			rowoutput[col] = cuCmulf(Slave, make_cuComplex(cos(samplePhase), -sin(samplePhase)));
+
+
+
+		}
+		else
+		{
+
+			const int kernelnoL = int((SlavePos_y - fl_interpL) * 2047 + 0.5); // lookup table index
+			const int kernelnoP = int((SlavePos_x - fl_interpP) * 2047 + 0.5); // lookup table index
+
+		/*	float kernelL[12], kernelP[12];
+
+
+			for (int i = 0; i < 12; i++)
+			{
+			
+				kernelL[i] = kernelAz[kernelnoL * 12 + i];
+				kernelP[i] = kernelRg[kernelnoP * 12 + i];
+
+			}*/
+
+
+
+
+
+			/*stupid but neccessary for experiment*/
+
+			//cuComplex B[144];
+			//float Phase[144];
+			//cuComplex * rowB;
+			//float* rowPhase;
+			//
+
+
+			//for (int j = 0; j < 12; ++j)
+			//{
+			//	rowB = (cuComplex *)((char*)slaveArray + (indexL - Npoints2m1 + j)*d_pitch2);
+			//	rowPhase = (float *)((char*)phaseArray + (indexL - Npoints2m1 + j)*d_pitch1);
+			//	for (int i = 0; i < 12; ++i)
+			//	{
+			//		
+			//		B[j * 12 + i] = rowB[indexP - Npoints2m1 + i]; //tex2D(tex_slave, indexP - Npoints2m1 + i, indexL - Npoints2m1 + j);
+			//		Phase[j * 12 + i] = rowPhase[indexP - Npoints2m1 + i];//tex2D(tex_PhaseArray, indexP - Npoints2m1 + i, indexL - Npoints2m1 + j);
+			//		
+
+			//	}
+			//}
+
+
+			//cuComplex sum = make_cuComplex(0.0f, 0.0f);
+			//float sum1 = 0.0f;
+			//cuComplex Result[12];
+			//float Result1[12];
+
+
+			//for (int jj = 0; jj < 12; ++jj)
+			//{
+			//	for (int k = 0; k < 12; ++k)
+			//	{
+			//		sum = cuCaddf(sum, CmulfFloat(B[jj * 12 + k],kernelP[k]));
+			//		sum1 += Phase[jj * 12 + k] * kernelP[k];
+
+			//	}
+			//	Result[jj] = sum;
+			//	Result1[jj] = sum1;
+			//	sum = make_cuComplex(0.0f, 0.0f);// complex requires this
+			//	sum1 = 0.0f;
+			//}
+
+			//for (int iter = 0; iter < 12; iter++)
+			//{
+			//	sum = cuCaddf(sum, CmulfFloat(Result[iter], kernelL[iter]));
+			//	sum1 += Result1[iter]* kernelL[iter];
+			//}
+
+			/*stupid but neccessary for experiment*/
+
+			/*clever but not enough */
+
+
+			cuComplex sum = make_cuComplex(0.0f, 0.0f);
+			cuComplex tempComplex = make_cuComplex(0.0f, 0.0f);
+			double tempFloat=0.0;
+
+			float sum1 = 0.0f;
+			cuComplex * rowB;
+			float* rowPhase;
+
+			indexL -= Npoints2m1;
+			indexP -= Npoints2m1;
+
+//			for (int j = 0; j < 12; ++j)
+//			{
+//				rowB = (cuComplex *)((char*)slaveArray + (indexL + j)*d_pitch2);
+//
+//
+//
+//
+//				tempComplex = make_cuComplex(0.0f, 0.0f);
+//				for (int i = 0; i < 12; i++)
+//				{
+//
+//					tempComplex = cuCaddf(tempComplex, CmulfFloat(rowB[indexP+i], kernelRg[kernelnoP * 12 + i]));
+//					/*tempComplex = cuCaddf(tempComplex, CmulfFloat(rowB[indexP + 1], kernelP[1]));
+//					tempComplex = cuCaddf(tempComplex, CmulfFloat(rowB[indexP + 2], kernelP[2]));
+//					tempComplex = cuCaddf(tempComplex, CmulfFloat(rowB[indexP + 3], kernelP[3]));
+//					tempComplex = cuCaddf(tempComplex, CmulfFloat(rowB[indexP + 4], kernelP[4]));
+//					tempComplex = cuCaddf(tempComplex, CmulfFloat(rowB[indexP + 5], kernelP[5]));
+//					tempComplex = cuCaddf(tempComplex, CmulfFloat(rowB[indexP + 6], kernelP[6]));
+//					tempComplex = cuCaddf(tempComplex, CmulfFloat(rowB[indexP + 7], kernelP[7]));
+//					tempComplex = cuCaddf(tempComplex, CmulfFloat(rowB[indexP + 8], kernelP[8]));
+//					tempComplex = cuCaddf(tempComplex, CmulfFloat(rowB[indexP + 9], kernelP[9]));
+//					tempComplex = cuCaddf(tempComplex, CmulfFloat(rowB[indexP + 10], kernelP[10]));
+//					tempComplex = cuCaddf(tempComplex, CmulfFloat(rowB[indexP + 11], kernelP[11]));
+//*/
+//
+//				}
+//
+//				//tempComplex = CmulfFloat(tempComplex, kernelL[j]);
+//				tempComplex = CmulfFloat(tempComplex, kernelAz[kernelnoL * 12 + j]);
+//
+//				sum = cuCaddf(sum, tempComplex);
+//
+//
+//			}
+//
+//			for (int j = 0; j < 12; ++j)
+//			{
+//				rowPhase = (float *)((char*)phaseArray + (indexL + j)*d_pitch1);
+//				tempFloat = 0.0;
+//
+//				for (int i = 0; i < 12; i++)
+//				{
+//
+//					tempFloat += (double)rowPhase[indexP+i] * kernelRg[kernelnoP * 12 + i];
+//				}
+//				/*tempFloat += (double)rowPhase[indexP + 1] * kernelP[1];
+//				tempFloat += (double)rowPhase[indexP + 2] * kernelP[2];
+//				tempFloat += (double)rowPhase[indexP + 3] * kernelP[3];
+//				tempFloat += (double)rowPhase[indexP + 4] * kernelP[4];
+//				tempFloat += (double)rowPhase[indexP + 5] * kernelP[5];
+//				tempFloat += (double)rowPhase[indexP + 6] * kernelP[6];
+//				tempFloat += (double)rowPhase[indexP + 7] * kernelP[7];
+//				tempFloat += (double)rowPhase[indexP + 8] * kernelP[8];
+//				tempFloat += (double)rowPhase[indexP + 9] * kernelP[9];
+//				tempFloat += (double)rowPhase[indexP + 10] * kernelP[10];
+//				tempFloat += (double)rowPhase[indexP + 11] * kernelP[11];*/
+//
+//
+//
+//				tempFloat *= kernelAz[kernelnoL * 12 + j];
+//
+//				//Result[j].y = 0.0f;
+//				sum1 += tempFloat;
+//
+//			}
+			
+			for (int i = 0; i < 12; i++)
+			{
+				rowB = (cuComplex *)((char*)slaveArray + (indexL + i)*d_pitch2);
+				rowPhase = (float *)((char*)phaseArray + (indexL + i)*d_pitch1);
+
+				//tempComplex = make_cuComplex(0.0f, 0.0f);
+				//tempFloat = 0.0f;
+
+				//float tmpAz = kernelAz[kernelnoL * 12 + i];
+				for (int j = 0; j < 12; j++)
+				{
+					
+					float tmpRg = kernelRg[kernelnoP * 12 + j];
+				
+					tempComplex = cuCaddf(tempComplex, 
+						CmulfFloat(CmulfFloat(rowB[indexP + j], tmpRg), kernelAz[kernelnoL * 12 + i]));
+					tempFloat += (double)rowPhase[indexP + j] * tmpRg * kernelAz[kernelnoL * 12 + i];
+
+					//tempComplex = cuCaddf(tempComplex,
+						//CmulfFloat(rowB[indexP + j], kernelRg[kernelnoP * 12 + j]));
+					//tempFloat += (double)rowPhase[indexP + j] * kernelRg[kernelnoP * 12 + j];
+
+
+				}
+				//sum = cuCaddf(sum, CmulfFloat(tempComplex, kernelAz[kernelnoL * 12 + i]));
+				//sum1 += tempFloat*kernelAz[kernelnoL * 12 + i];
+			}
+			sum = tempComplex;
+			sum1 = tempFloat;
+		
+		
+			rowoutput[col] = cuCmulf(sum, make_cuComplex(cos(sum1), -sin(sum1)));
+	
+		}
+	}
+
+}
+
+
+__global__ void
+resample_kernel_12p_textureTest
+(cuComplex *output, int LineOffset, int Lines, size_t CorrPitch_1)
+{
+
+	const int row = blockIdx.y*blockDim.y + threadIdx.y;
+	const int col = blockIdx.x*blockDim.x + threadIdx.x;
+
+	cuComplex * rowoutput = (cuComplex *)((char*)output + row*CorrPitch_1);
+
+	// adjust pCorr to point to row
+
+
+	int Npoints2m1 = 12 / 2 - 1;
+
+
+
+	if (row < Lines && col < c_mPixels)
+	{
+
+		double normalizeP = normalizeWarp((double)col, c_MasterBox[0], c_MasterBox[1]);
+		double normalizeL = normalizeWarp((double)(row + LineOffset + c_mY0), c_MasterBox[2], c_MasterBox[3]);
+
+
+
+		double SlavePos_x = my_polyval(normalizeL, normalizeP, c_CpmRg);
+		double SlavePos_y = my_polyval(normalizeL, normalizeP, c_CpmAz) + d_AzimuthShift;
+
+
+
+
+		int  fl_interpL = int(SlavePos_y);
+		int fl_interpP = int(SlavePos_x);
+
+
+		int indexL = fl_interpL - c_sY0;
+		int indexP = fl_interpP - c_sX0;
+
+
+
+		if (fl_interpL > c_sYmax || fl_interpL<c_sY0
+			|| fl_interpP>c_sXmax || fl_interpP < c_sX0)
+		{
+			rowoutput[col] = make_cuComplex(0.0f, 0.0f);
+
+		}
+
+		else if (fl_interpL>c_sYmax - Npoints2m1 - 2 || fl_interpL<c_sY0 + Npoints2m1
+			|| fl_interpP>c_sXmax - Npoints2m1 - 2 || fl_interpP < c_sX0 + Npoints2m1)
+		{
+
+			//float* rowPhaseArray = (float*)((char*)PhaseArray + indexL*Spitch);
+
+
+			cuComplex SlaveArray = tex2D(tex_slave, indexP, indexL);
+			float samplePhase = tex2D(tex_PhaseArray, indexP, indexL);
+
+
+			/*double ReSampleI = sampleI*cos(samplePhase) + sampleQ*sin(samplePhase);
+			double ReSampleQ = -sampleI*sin(samplePhase) + sampleQ*cos(samplePhase);*/
+
+			rowoutput[col] = cuCmulf(SlaveArray, make_cuComplex(cos(samplePhase), -sin(samplePhase)));
+
+
+
+		}
+		else
+		{
+			//const float interpLdec = SlavePos_y - fl_interpL; //shared[offset1];//fl_interpL;            // e.g. .35432
+			//const float interpPdec = SlavePos_x - fl_interpP;//shared[offset1 + 1];//fl_interpP; // e.g. .5232
+
+
+			const int kernelnoL = int((SlavePos_y - fl_interpL) * 2047 + 0.5); // lookup table index
+			const int kernelnoP = int((SlavePos_x - fl_interpP) * 2047 + 0.5); // lookup table index
+			//float kernelL_real[6], /*kernelL_img[6],*/ Axis[6];
+			//float kernelP_real[6];
+			//float Axis[4];
+			/*float kernelL[12], kernelP[12];*/
+
+			//for (int i = 0; i < 12; ++i)
+			//{
+			/*kernelL[0] = tex2D(tex_kernelAz, 0, kernelnoL);
+			kernelL[1] = tex2D(tex_kernelAz, 1, kernelnoL);
+			kernelL[2] = tex2D(tex_kernelAz, 2, kernelnoL);
+			kernelL[3] = tex2D(tex_kernelAz, 3, kernelnoL);
+			kernelL[4] = tex2D(tex_kernelAz, 4, kernelnoL);
+			kernelL[5] = tex2D(tex_kernelAz, 5, kernelnoL);
+			kernelL[6] = tex2D(tex_kernelAz, 6, kernelnoL);
+			kernelL[7] = tex2D(tex_kernelAz, 7, kernelnoL);
+			kernelL[8] = tex2D(tex_kernelAz, 8, kernelnoL);
+			kernelL[9] = tex2D(tex_kernelAz, 9, kernelnoL);
+			kernelL[10] = tex2D(tex_kernelAz, 10, kernelnoL);
+			kernelL[11] = tex2D(tex_kernelAz, 11, kernelnoL);
+
+			kernelP[0] = tex2D(tex_kernelRg, 0, kernelnoP);
+			kernelP[1] = tex2D(tex_kernelRg, 1, kernelnoP);
+			kernelP[2] = tex2D(tex_kernelRg, 2, kernelnoP);
+			kernelP[3] = tex2D(tex_kernelRg, 3, kernelnoP);
+			kernelP[4] = tex2D(tex_kernelRg, 4, kernelnoP);
+			kernelP[5] = tex2D(tex_kernelRg, 5, kernelnoP);
+			kernelP[6] = tex2D(tex_kernelRg, 6, kernelnoP);
+			kernelP[7] = tex2D(tex_kernelRg, 7, kernelnoP);
+			kernelP[8] = tex2D(tex_kernelRg, 8, kernelnoP);
+			kernelP[9] = tex2D(tex_kernelRg, 9, kernelnoP);
+			kernelP[10] = tex2D(tex_kernelRg, 10, kernelnoP);
+			kernelP[11] = tex2D(tex_kernelRg, 11, kernelnoP);*/
+			//Axis[i] = tex2D(tex_Axis, i, kernelnoL);
+			//}
+
+
+
+			//cuComplex Result[12];
+			cuComplex tempComplex;
+
+
+			cuComplex sum = make_cuComplex(0.0f, 0.0f);
+			//cuComplex sum1=make_cuComplex(0.0f,0.0f);
+			double sum1 = 0.0;
+			double tempFloat;
+			//cuComplex temp[12];
+			//cuComplex temp[144];
+			indexP -= Npoints2m1;
+			indexL -= Npoints2m1;
+
+
+			for (int i = 0; i < 12; i++)
+			{
+				for (int j = 0; j < 12; j++)
+				{
+					sum = cuCaddf(sum,
+						CmulfFloat(CmulfFloat(tex2D(tex_slave, indexP + j, indexL + i), tex2D(tex_kernelAz, i, kernelnoL)), tex2D(tex_kernelRg, j, kernelnoP)));
+					
+				}
+			}
+
+			for (int i = 0; i < 12; i++)
+			{
+				for (int j = 0; j < 12; j++)
+				{
+
+					sum1 += (double)tex2D(tex_PhaseArray, indexP + j, indexL + i)* tex2D(tex_kernelAz, i, kernelnoL) * tex2D(tex_kernelRg, j, kernelnoP);
+				}
+			}
+			
+
+			rowoutput[col] = cuCmulf(sum, make_cuComplex(cos(sum1), -sin(sum1)));
+
+		}
+	}
+
+}
 
     void DerampDemodResample(
 	complex<short>*SlaveArray,
@@ -685,11 +1065,17 @@ resample_texture_kernel_12p_overlap_warpFunction
 	//cudaEventElapsedTime(&time_cost1, g_start, g_stop);
 	//cout << "DeRamping duration:" << time_cost1 << endl;
 
+	
+	
 
 
 
-
-
+	float *d_KernelAz;
+	float *d_KernelRg;
+	cudaMalloc((void**)&d_KernelAz, Npoints * 2048 * sizeof(float));
+	cudaMalloc((void**)&d_KernelRg, Npoints * 2048 * sizeof(float));
+	cudaMemcpy(d_KernelAz, KernelAz, Npoints * 2048 * sizeof(float),cudaMemcpyDeviceToHost);
+	cudaMemcpy(d_KernelRg, KernelRg, Npoints * 2048 * sizeof(float), cudaMemcpyDeviceToHost);
 
 	cudaMemcpyToArray(KernelAzArray, 0, 0, KernelAz, Npoints * 2048 * sizeof(float), cudaMemcpyHostToDevice);
 	cudaMemcpyToArray(KernelRgArray, 0, 0, KernelRg, Npoints * 2048 * sizeof(float), cudaMemcpyHostToDevice);
@@ -707,6 +1093,7 @@ resample_texture_kernel_12p_overlap_warpFunction
 		(mLines + threads.y - 1) / threads.y);
 
 
+	bool OverlapOrNot = false;
 
 	//for Subsets
 	int partMlines = mLines / 4;
@@ -722,8 +1109,8 @@ resample_texture_kernel_12p_overlap_warpFunction
 
 
 
-	cudaFuncSetCacheConfig(resample_texture_kernel_12p_overlap_warpFunction, cudaFuncCachePreferL1);
-
+	cudaFuncSetCacheConfig(Interpolation_12p, cudaFuncCachePreferL1);
+	int NumTest = 10;
 
 	float time_cost1, time_cost2;
 	cudaEventCreate(&g_start);
@@ -735,49 +1122,64 @@ resample_texture_kernel_12p_overlap_warpFunction
 	{
 
 	}
-
+	
+	
 
 	if (Npoints == 12)
 	{
+		//for raw test
+
+		if (!OverlapOrNot)
+		{
+			/*resample_texture_kernel_12p_warpFunction_raw << <blocks, threads >> >(d_resample, d_SlaveArray, d_PhaseArray,
+				d_KernelAz, d_KernelRg, d_pitch1, d_pitch2,mLines, CorrPitch);*/
+			//resample_kernel_12p_textureTest << <blocks, threads >> >(d_resample, 0, mLines, CorrPitch);
+
+			 //for whole test
+			Interpolation_12p
+				<< <blocks, threads >> >(d_resample, 0,
+				mLines, CorrPitch);
+			
 		
+		}
 		//SubSet1
 
-		resample_texture_kernel_12p_overlap_warpFunction
-		<< <Partblocks, threads, 0, stream[0] >> >(d_resample, 0,
-			partMlines, CorrPitch);
+		//Interpolation_12p
+		//<< <Partblocks, threads, 0, stream[0] >> >(d_resample, 0,
+		//	partMlines, CorrPitch);
 
-		cudaMemcpy2DAsync(output, (mPixels)*sizeof(cuComplex), d_resample, CorrPitch, (mPixels)*sizeof(cuComplex), partMlines, cudaMemcpyDeviceToHost, stream[0]);
-
-
-
-		//SubSet2
-		resample_texture_kernel_12p_overlap_warpFunction
-			<< <Partblocks, threads, 0, stream[1] >>>
-			(d_resample + PartOffsetD, partMlines,
-			partMlines, CorrPitch);
-		cudaMemcpy2DAsync(output + PartOffsetH, (mPixels)*sizeof(cuComplex), 
-			d_resample + PartOffsetD, CorrPitch, (mPixels)*sizeof(cuComplex),
-			partMlines, cudaMemcpyDeviceToHost, stream[1]);
-
-		//SubSet3
-		
-		resample_texture_kernel_12p_overlap_warpFunction
-		<< <Partblocks, threads, 0, stream[2] >>>
-		(d_resample + 2 * PartOffsetD, 2 * partMlines,
-			partMlines, CorrPitch);
-		cudaMemcpy2DAsync(output + 2 * PartOffsetH, (mPixels)*sizeof(cuComplex),
-			d_resample + 2 * PartOffsetD, CorrPitch, (mPixels)*sizeof(cuComplex),
-			partMlines, cudaMemcpyDeviceToHost, stream[2]);
+		//cudaMemcpy2DAsync(output, (mPixels)*sizeof(cuComplex), d_resample, CorrPitch, (mPixels)*sizeof(cuComplex), partMlines, cudaMemcpyDeviceToHost, stream[0]);
 
 
-		//SubSet4
-		resample_texture_kernel_12p_overlap_warpFunction
-			<< <Lastblocks, threads, 0, stream[3] >> >
-			(d_resample + 3 * PartOffsetD, 3 * partMlines,
-			partMlines + RemainMlines, CorrPitch);
-		cudaMemcpy2DAsync(output + 3 * PartOffsetH, (mPixels)*sizeof(cuComplex), 
-			d_resample + 3 * PartOffsetD, CorrPitch, (mPixels)*sizeof(cuComplex), 
-			(partMlines + RemainMlines), cudaMemcpyDeviceToHost, stream[3]);
+
+		////SubSet2
+		//Interpolation_12p
+		//	<< <Partblocks, threads, 0, stream[1] >>>
+		//	(d_resample + PartOffsetD, partMlines,
+		//	partMlines, CorrPitch);
+		//cudaMemcpy2DAsync(output + PartOffsetH, (mPixels)*sizeof(cuComplex), 
+		//	d_resample + PartOffsetD, CorrPitch, (mPixels)*sizeof(cuComplex),
+		//	partMlines, cudaMemcpyDeviceToHost, stream[1]);
+
+		////SubSet3
+		//
+		//Interpolation_12p
+		//<< <Partblocks, threads, 0, stream[2] >>>
+		//(d_resample + 2 * PartOffsetD, 2 * partMlines,
+		//	partMlines, CorrPitch);
+		//cudaMemcpy2DAsync(output + 2 * PartOffsetH, (mPixels)*sizeof(cuComplex),
+		//	d_resample + 2 * PartOffsetD, CorrPitch, (mPixels)*sizeof(cuComplex),
+		//	partMlines, cudaMemcpyDeviceToHost, stream[2]);
+
+
+		////SubSet4
+		//Interpolation_12p
+		//	<< <Lastblocks, threads, 0, stream[3] >> >
+		//	(d_resample + 3 * PartOffsetD, 3 * partMlines,
+		//	partMlines + RemainMlines, CorrPitch);
+		//cudaMemcpy2DAsync(output + 3 * PartOffsetH, (mPixels)*sizeof(cuComplex), 
+		//	d_resample + 3 * PartOffsetD, CorrPitch, (mPixels)*sizeof(cuComplex), 
+		//	(partMlines + RemainMlines), cudaMemcpyDeviceToHost, stream[3]);
 
 		
 
@@ -789,11 +1191,13 @@ resample_texture_kernel_12p_overlap_warpFunction
 	cudaEventRecord(g_stop, 0);
 	cudaEventSynchronize(g_stop);
 	cudaEventElapsedTime(&time_cost2, g_start, g_stop);
-	cout << "kernel duration:" << time_cost2 << endl;
+	cout << "kernel duration:" << time_cost2  << endl;
 	cudaEventDestroy(g_start);
 	cudaEventDestroy(g_stop);
-
 	
+	cudaMemcpy2D(output, mPixels*sizeof(cuComplex),
+		d_resample, CorrPitch, mPixels*sizeof(cuComplex),
+		mLines, cudaMemcpyDeviceToHost);
 
 
 	for (int i = 0; i < 4; i++)
@@ -826,13 +1230,14 @@ resample_texture_kernel_12p_overlap_warpFunction
 	cudaFreeArray(KernelRgArray);
 	cudaFree(d_SlaveArrayS2);
 
+	
 
-
+	
 	cudaDeviceReset();
 
 
 
-
+	
 }
 
 
@@ -1010,7 +1415,7 @@ cuComplex* DerampDemodResample_ESD(
 
 
 
-	//cudaFuncSetCacheConfig(resample_texture_kernel_12p_overlap_warpFunction, cudaFuncCachePreferL1);
+	cudaFuncSetCacheConfig(Interpolation_12p, cudaFuncCachePreferL1);
 
 
 	float time_cost1, time_cost2;
@@ -1030,7 +1435,7 @@ cuComplex* DerampDemodResample_ESD(
 
 		//SubSet1
 
-		resample_texture_kernel_12p_overlap_warpFunction
+		Interpolation_12p
 			<< <Partblocks, threads, 0, stream[0] >> >(d_resample, 0,
 			partMlines, CorrPitch);
 
@@ -1039,7 +1444,7 @@ cuComplex* DerampDemodResample_ESD(
 
 
 		//SubSet2
-		resample_texture_kernel_12p_overlap_warpFunction
+		Interpolation_12p
 			<< <Partblocks, threads, 0, stream[1] >> >
 			(d_resample + PartOffsetD, partMlines,
 			partMlines, CorrPitch);
@@ -1049,7 +1454,7 @@ cuComplex* DerampDemodResample_ESD(
 
 		//SubSet3
 
-		resample_texture_kernel_12p_overlap_warpFunction
+		Interpolation_12p
 			<< <Partblocks, threads, 0, stream[2] >> >
 			(d_resample + 2 * PartOffsetD, 2 * partMlines,
 			partMlines, CorrPitch);
@@ -1059,7 +1464,7 @@ cuComplex* DerampDemodResample_ESD(
 
 
 		//SubSet4
-		resample_texture_kernel_12p_overlap_warpFunction
+		Interpolation_12p
 			<< <Lastblocks, threads, 0, stream[3] >> >
 			(d_resample + 3 * PartOffsetD, 3 * partMlines,
 			partMlines + RemainMlines, CorrPitch);
