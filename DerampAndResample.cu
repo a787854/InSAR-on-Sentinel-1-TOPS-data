@@ -321,7 +321,7 @@ double* SlaveRg, size_t CorrPitch_1)
 				sum1 = make_cuComplex(0.0f, 0.0f);
 			}
 
-			/*è¡Œå·ç§¯è·å¾—æœ€ç»ˆç»“æœ*/
+			/*ĞĞ¾í»ı»ñµÃ×îÖÕ½á¹û*/
 			sum = cuCaddf(cuCaddf(cuCaddf(cuCaddf(cuCaddf(cuCmulf(Result[0], kernelL[0]), cuCmulf(Result[1], kernelL[1])), cuCmulf(Result[2], kernelL[2])), cuCmulf(Result[3], kernelL[3])),
 				cuCmulf(Result[4], kernelL[4])), cuCmulf(Result[5], kernelL[5]));
 			sum1 = cuCaddf(cuCaddf(cuCaddf(cuCaddf(cuCaddf(cuCmulf(Result1[0], kernelL[0]), cuCmulf(Result1[1], kernelL[1])), cuCmulf(Result1[2], kernelL[2])), cuCmulf(Result1[3], kernelL[3])),

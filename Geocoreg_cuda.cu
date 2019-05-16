@@ -56,7 +56,7 @@ extern "C"	void GeoCoreg_warp_cuda(
 	double s_rangeSpacing,
 	bool m_nearRangeOnLeft,
 	bool s_nearRangeOnLeft,
-	short* inputDEM,
+	int* inputDEM,
 	double *m_x_coef,
 	double *m_y_coef,
 	double *m_z_coef,
@@ -210,7 +210,7 @@ inline __device__ __host__ void getAcc(double t, double*accsat, double* coef_x,
 
 __global__ void ell2lpGeo
 (   /*input*/
-short *d_DEM,
+int *d_DEM,
 int    orb_numberofpoints,
 int    orb_numberofcoefs,
 double   midtime,
@@ -306,20 +306,226 @@ double rangeSpacing
 
 			Pixelbuffer[tid] = (range_tmp - slrTimeToFirstPixel*SOL_cuda) / rangeSpacing;
 
-			//	if(row==0&&col==0)
-		/*{
-		printf("lat0:%lf\n",b_lat0 - b_DEMdeltalat*row);
-		printf("lon0:%lf\n",b_lon0 + b_DEMdeltalon*col); 
-		printf("targetpos:%lf\n",targetpos[0]);
-		printf("targetpos:%lf\n",targetpos[1]);
-		printf("targetpos:%lf\n",targetpos[2]);
-		printf("possat:%lf\n",possat[0]);
-		printf("possat:%lf\n",possat[1]);
-		printf("possat:%lf\n",possat[2]);
-		//printf("sol:%lf\n",sol);
-		//printf("azimuthTime:%lf\n",azimuth_tmp );
 
-		}*/
+
+
+		}
+		else
+		{
+			Linebuffer[tid] = -99999999;
+			Pixelbuffer[tid] = -99999999;
+
+
+		}
+
+	}
+
+}
+
+__device__  inline double getDopplerFreq(double *earthPos, double* sensorPos, double* sensorVel, double wavelength)
+{
+	double xDiff = earthPos[0] - sensorPos[0];
+	double yDiff = earthPos[1] - sensorPos[1];
+	double zDiff = earthPos[2] - sensorPos[2];
+	double distance = sqrt(xDiff * xDiff + yDiff * yDiff + zDiff * zDiff);
+
+	return 2.0 * (sensorVel[0] * xDiff + sensorVel[1] * yDiff + sensorVel[2] * zDiff) / (distance * wavelength);
+
+}
+
+__global__ void ell2lpGeo_BinarySearch
+(   /*input*/
+int *d_DEM,
+int    orb_numberofpoints,
+int    orb_numberofcoefs,
+double   midtime,
+double *  orb_coef_x,
+double *  orb_coef_y,
+double *  orb_coef_z,
+double *Linebuffer,
+double *Pixelbuffer,
+double azimuthTimeInterval,
+double firstLineTime,
+double slrTimeToFirstPixel,
+double     aziInitial,
+int demNoData,
+bool nearRangeOnLeft,
+int LineOffset,
+double rangeSpacing,
+double waveLength,
+double* azimuthTime,
+int numberofAzimuthTime
+//int *NI
+)
+{
+
+	unsigned int tid = blockIdx.x*blockDim.x + threadIdx.x;
+
+	if (tid < b_nrows*b_ncols)
+	{
+		unsigned int row = tid / b_ncols;
+		unsigned int col = tid%b_ncols;
+
+		int ncoefs = orb_numberofcoefs;
+
+
+		double phi = deg2rad(b_lat0 - b_DEMdeltalat*row);
+		double lambda = deg2rad(b_lon0 + b_DEMdeltalon*col);
+
+
+
+		double height = d_DEM[tid];
+
+
+
+		if (height != demNoData)
+		{
+
+			
+			double earthPoint[3];
+			llh2xyz(deg2rad(b_lat0 - b_DEMdeltalat*row), deg2rad(b_lon0 + b_DEMdeltalon*col),
+				height, earthPoint);
+
+			double sol = 0.0;
+			//double azimuth_tmp = aziInitial;//rowd_azi[col];
+
+			double possat[3];
+			double velsat[3];
+			//double satacc[3];
+
+
+			double delta_x;
+			double delta_y;
+			double delta_z;
+
+			double firstVecTime = 0.0;
+			double secondVecTime = 0.0;
+			double firstVecFreq = 0.0;
+			double secondVecFreq = 0.0;
+
+			double midAziTime = midtime;
+
+			double t_tmp = (azimuthTime[0] - midAziTime) / 10.0;
+
+			getPos(t_tmp, possat, orb_coef_x, orb_coef_y, orb_coef_z, ncoefs);
+			getVelo(t_tmp, velsat, orb_coef_x, orb_coef_y, orb_coef_z, ncoefs);
+
+			double currentFreq = getDopplerFreq(earthPoint, possat, velsat, waveLength);
+
+
+			firstVecFreq = currentFreq;
+			firstVecTime = azimuthTime[0];
+
+			for (int i = 1; i < numberofAzimuthTime; i++)
+			{
+				t_tmp = (azimuthTime[i] - midAziTime) / 10.0;
+				getPos(t_tmp, possat, orb_coef_x, orb_coef_y, orb_coef_z, ncoefs);
+				getVelo(t_tmp, velsat, orb_coef_x, orb_coef_y, orb_coef_z, ncoefs);
+
+				currentFreq = getDopplerFreq(earthPoint, possat, velsat, waveLength);
+
+				if (firstVecFreq*currentFreq > 0)
+				{
+					firstVecTime = azimuthTime[i];
+					firstVecFreq = currentFreq;
+
+				}
+				else
+				{
+					secondVecTime = azimuthTime[i];
+					secondVecFreq = currentFreq;
+					break;
+
+				}
+
+			}
+
+			
+
+
+			if (firstVecFreq * secondVecFreq < 0.0)
+			{
+				double lowerBoundTime = firstVecTime;
+				double upperBoundTime = secondVecTime;
+				double lowerBoundFreq = firstVecFreq;
+				double upperBoundFreq = secondVecFreq;
+				double midTime = 0.0;
+				double midFreq = 0.0;
+				int nv = 8;
+				int i0, iN;
+				double weight;
+				double time2;
+
+
+
+				double diffTime = abs(upperBoundTime - lowerBoundTime);
+
+				double absLineTimeInterval = abs(azimuthTimeInterval / 10);
+				int totalIterations = (int)(diffTime / absLineTimeInterval);
+				int numIterations = 0;
+
+				while (diffTime > absLineTimeInterval&&numIterations <= totalIterations)
+				{
+
+					possat[0] = possat[1] = possat[2] = 0.0;
+					velsat[0] = velsat[1] = velsat[2] = 0.0;
+					midTime = (upperBoundTime + lowerBoundTime) / 2.0;
+
+					t_tmp = (midTime - midAziTime) / 10.0;
+
+					getPos(t_tmp, possat, orb_coef_x, orb_coef_y, orb_coef_z, ncoefs);
+					getVelo(t_tmp, velsat, orb_coef_x, orb_coef_y, orb_coef_z, ncoefs);
+
+
+					midFreq = getDopplerFreq(earthPoint, possat, velsat,
+						waveLength);
+
+
+
+					if (midFreq * lowerBoundFreq > 0.0)
+					{
+						lowerBoundTime = midTime;
+						lowerBoundFreq = midFreq;
+					}
+					else if (midFreq * upperBoundFreq > 0.0)
+					{
+						upperBoundTime = midTime;
+						upperBoundFreq = midFreq;
+					}
+					else if (midFreq == 0.0)
+					{
+						break;
+					}
+
+					diffTime = abs(upperBoundTime - lowerBoundTime);
+					numIterations++;
+
+
+				}
+
+				midTime = lowerBoundTime - lowerBoundFreq * (upperBoundTime - lowerBoundTime) / (upperBoundFreq - lowerBoundFreq);
+
+				t_tmp = (midTime - midAziTime) / 10.0;
+				getPos(t_tmp, possat, orb_coef_x, orb_coef_y, orb_coef_z, ncoefs);
+
+
+				delta_x = earthPoint[0] - possat[0];
+				delta_y = earthPoint[1] - possat[1];
+				delta_z = earthPoint[2] - possat[2];
+
+				Linebuffer[tid] = LineOffset + (midTime - firstLineTime) / azimuthTimeInterval;
+				//NI[tid] = numIterations;
+
+				
+
+
+				double range_tmp = sqrt(delta_x*delta_x + delta_y*delta_y + delta_z*delta_z);
+
+				Pixelbuffer[tid] = (range_tmp - slrTimeToFirstPixel*SOL_cuda) / rangeSpacing;
+
+
+			}
+
 
 
 		}
@@ -339,11 +545,9 @@ double rangeSpacing
 
 
 
-
-
 __global__ void WeighthSet
 (   /*input*/
-short *d_DEM,
+int *d_DEM,
 double *Linebuffer,
 double *Pixelbuffer,
 int demNoData,
@@ -440,7 +644,7 @@ void GeoCoreg_warp_cuda(
 	double s_rangeSpacing,
 	bool m_nearRangeOnLeft,
 	bool s_nearRangeOnLeft,
-	short* inputDEM,
+	int* inputDEM,
 	double *m_x_coef,
 	double *m_y_coef,
 	double *m_z_coef,
@@ -477,7 +681,6 @@ void GeoCoreg_warp_cuda(
 
 
 
-
 	cudaHostRegister(inputDEM, numLines*numPixels*sizeof(short), cudaHostRegisterDefault);
 	cudaHostRegister(AzCpm, 6 * sizeof(double), cudaHostRegisterDefault);
 	cudaHostRegister(RgCpm, 6 * sizeof(double), cudaHostRegisterDefault);
@@ -485,9 +688,9 @@ void GeoCoreg_warp_cuda(
 
 
 
-	short *d_inputDEM;
+	int *d_inputDEM;
 	size_t d_pitch;
-	cudaMalloc((void**)&d_inputDEM, numPixels*numLines*sizeof(short));
+	cudaMalloc((void**)&d_inputDEM, numPixels*numLines*sizeof(int));
 
 	
 	double *d_masterAZ, *d_masterRG, *d_slaveAZ, *d_slaveRG;
@@ -496,9 +699,17 @@ void GeoCoreg_warp_cuda(
 	cudaMalloc((void**)&d_slaveAZ, numLines*numPixels*sizeof(double));
 	cudaMalloc((void**)&d_slaveRG, numLines*numPixels*sizeof(double));
 
+	bool BinaryOn = false;
+	double * d_m_azimuthTime, *d_s_azimuthTime;
+	if (BinaryOn)
+	{
+		
+		cudaMalloc((void**)&d_m_azimuthTime, orb_m_numberofpoints*sizeof(double));
+		cudaMalloc((void**)&d_s_azimuthTime, orb_s_numberofpoints*sizeof(double));
 
-
-
+		cudaMemcpy(d_m_azimuthTime, m_orbitAzTime, orb_m_numberofpoints*sizeof(double), cudaMemcpyHostToDevice);
+		cudaMemcpy(d_s_azimuthTime, s_orbitAzTime, orb_s_numberofpoints*sizeof(double), cudaMemcpyHostToDevice);
+	}
 
 	double  *d_m_x_coef, *d_m_y_coef, *d_m_z_coef;
 	double  *d_s_x_coef, *d_s_y_coef, *d_s_z_coef;
@@ -514,11 +725,6 @@ void GeoCoreg_warp_cuda(
 	cudaMalloc((void**)&d_m_z_coef,  orb_m_numbercoefs*sizeof(double));
 
 
-	///*for Binary Search Test*/
-	//double *d_m_orbit_azimuthTime, *d_s_orbit_azimuthTime;
-	//cudaMalloc((void**)&d_m_orbit_azimuthTime, orb_m_numberofpoints*sizeof(double));
-	//cudaMalloc((void**)&d_s_orbit_azimuthTime, orb_s_numberofpoints*sizeof(double));
-	///*for Binary Search Test*/
 
 	double *d_weight = NULL;
 	double *d_A = NULL;
@@ -547,7 +753,6 @@ void GeoCoreg_warp_cuda(
 	cudaMemset(d_weight, 0, numLines*numPixels*sizeof(double));
 
 
-
 	cudaMemcpyToSymbol(b_ell_e2, &e2, sizeof(double), 0, cudaMemcpyHostToDevice);
 
 	unsigned int threads = 256;
@@ -567,7 +772,7 @@ void GeoCoreg_warp_cuda(
 
 
 
-
+	
 
 	cudaMemcpy(d_m_x_coef, m_x_coef, orb_m_numbercoefs*sizeof(double), cudaMemcpyHostToDevice);
 	cudaMemcpy(d_m_y_coef, m_y_coef, orb_m_numbercoefs*sizeof(double), cudaMemcpyHostToDevice);
@@ -582,17 +787,27 @@ void GeoCoreg_warp_cuda(
 
 	cudaMemcpy(d_inputDEM, inputDEM, numLines*numPixels*sizeof(short), cudaMemcpyHostToDevice);
 
+
+
+	if (BinaryOn)
+	{
+		ell2lpGeo_BinarySearch << <blocksNum, threads >> >(d_inputDEM, orb_m_numberofpoints, orb_m_numbercoefs, m_midTime,
+			d_m_x_coef, d_m_y_coef, d_m_z_coef, d_masterAZ, d_masterRG, m_azimuthTimeInterval, m_burstFirstLineTime, m_slrTimeToFirstPixel,
+			m_aziInitial, demnodata, m_nearRangeOnLeft, m_lineOffset, m_rangeSpacing, wavelength, d_m_azimuthTime, orb_m_numberofpoints);
+
+		ell2lpGeo_BinarySearch << <blocksNum, threads >> >(d_inputDEM, orb_s_numberofpoints, orb_s_numbercoefs, s_midTime,
+			d_s_x_coef, d_s_y_coef, d_s_z_coef, d_slaveAZ, d_slaveRG, s_azimuthTimeInterval, s_burstFirstLineTime, s_slrTimeToFirstPixel,
+			s_aziInitial, demnodata, s_nearRangeOnLeft, s_lineOffset, s_rangeSpacing, wavelength, d_s_azimuthTime, orb_s_numberofpoints);
+	}
+
 	ell2lpGeo << <blocksNum, threads >> >(d_inputDEM, orb_m_numberofpoints, orb_m_numbercoefs, m_midTime,
 		d_m_x_coef, d_m_y_coef, d_m_z_coef, d_masterAZ, d_masterRG, m_azimuthTimeInterval, m_burstFirstLineTime, m_slrTimeToFirstPixel,
 		m_aziInitial, demnodata, m_nearRangeOnLeft, m_lineOffset, m_rangeSpacing);
 
 
-
 	ell2lpGeo << <blocksNum, threads >> >(d_inputDEM, orb_s_numberofpoints, orb_s_numbercoefs, s_midTime,
 		d_s_x_coef, d_s_y_coef, d_s_z_coef, d_slaveAZ, d_slaveRG, s_azimuthTimeInterval, s_burstFirstLineTime, s_slrTimeToFirstPixel,
 		s_aziInitial, demnodata, s_nearRangeOnLeft, s_lineOffset, s_rangeSpacing);
-
-
 
 	WeighthSet << <blocksNum, threads >> > (d_inputDEM, d_masterAZ, d_masterRG, demnodata, d_weight, xmin, xmax,
 		ymin, ymax);
@@ -675,6 +890,12 @@ void GeoCoreg_warp_cuda(
 	cudaFree(d_WeightA);
 	cudaFree(d_N);
 	cudaFree(d_AzCpm);
+	if (BinaryOn)
+	{
+		cudaFree(d_m_azimuthTime);
+		cudaFree(d_s_azimuthTime);
+	}
+
 	cudaDeviceReset();
 
 

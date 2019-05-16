@@ -2,6 +2,193 @@
 
 
 
+
+
+
+
+
+/*****************************************************************
+*Class:RefDem                                                    *
+*****************************************************************/
+int SubSwathInfo::clear()
+	{
+		if (firstValidSample != NULL)
+			delete[]firstValidSample;
+		if (lastValidSample != NULL)
+			delete[]lastValidSample;
+		if (rangeDependDopplerRate != NULL)
+			delete[]rangeDependDopplerRate;
+
+		if (dopplerRate != NULL)
+			delete[]dopplerRate;
+
+		if (referenceTime != NULL)
+			delete[]referenceTime;
+
+		if (dopplerCentroid != NULL)
+			delete[]dopplerCentroid;
+
+
+		if (azimuthTime != NULL)
+			delete[]azimuthTime;
+
+		if (slantRangeTime != NULL)
+			delete[]slantRangeTime;
+
+		if (latitude != NULL)
+			delete[]latitude;
+
+		if (longitude != NULL)
+			delete[]longitude;
+
+		if (incidenceAngle != NULL)
+			delete[]incidenceAngle;
+
+		if (orbitAzTime != NULL)
+			delete[]orbitAzTime;
+
+		if (x_pos != NULL)
+			delete[]x_pos;
+
+		if (y_pos != NULL)
+			delete[]y_pos;
+
+		if (z_pos != NULL)
+			delete[]z_pos;
+
+		if (x_vel != NULL)
+			delete[]x_vel;
+
+		if (y_vel != NULL)
+			delete[]y_vel;
+
+		if (z_vel != NULL)
+			delete[]z_vel;
+
+		if (latlonBurst != NULL)
+			delete[]latlonBurst;
+
+		return 1;
+	}
+
+
+/*****************************************************************
+*Class:SentinelTOPS                                              *
+*****************************************************************/
+
+double SentinelTOPS::getPRF()
+{
+	if (SubSwath != NULL)
+	{
+		return SubSwath[0].prf;
+	}
+	else
+	{
+		return -999999;
+	}
+}
+
+double SentinelTOPS::getABW()
+{
+	if (SubSwath != NULL)
+	{
+		return SubSwath[0].azimuth_bandwidth;
+	}
+	else
+	{
+		return -999999;
+	}
+}
+
+double SentinelTOPS::getRSR2X()
+{
+	if (SubSwath != NULL)
+	{
+		return SubSwath[0].rangeSamplingRate * 2;
+	}
+	else
+	{
+		return -999999;
+	}
+
+}
+
+void SentinelTOPS::clear()
+{
+
+	if (SubSwath != NULL)
+	{
+		for (int i = 0; i < NumSubSwath; i++)
+		{
+			SubSwath[i].clear();
+		}
+		delete[] SubSwath;
+		SubSwath = NULL;
+	}
+
+}
+
+
+/*****************************************************************
+*Class:S1PreciseOrbit                                            *
+*****************************************************************/
+void S1PreciseOrbit::clear()
+{
+	if (orbitAzTime != NULL)
+		delete[] orbitAzTime;
+
+	if (x_pos != NULL)
+		delete[] x_pos;
+
+	if (y_pos != NULL)
+		delete[] y_pos;
+
+	if (z_pos != NULL)
+		delete[] z_pos;
+
+	if (x_vel != NULL)
+		delete[] x_vel;
+
+	if (y_vel != NULL)
+		delete[] y_vel;
+
+	if (z_vel != NULL)
+		delete[] z_vel;
+
+	if (coef_x != NULL)
+		delete[] coef_x;
+
+	if (coef_y != NULL)
+		delete[] coef_y;
+
+	if (coef_z != NULL)
+		delete[] coef_z;
+}
+
+/*****************************************************************/
+/*Class:ellipsoid_WGS84                                          */
+/*****************************************************************/
+ellipsoid_WGS84::ellipsoid_WGS84()
+{
+	a = 6378137.0;
+	b = 6356752.3142451794975639665996337;
+	e2 = 1.0 - (b / a)*(b / a);
+	e2b = e2 / (1 - e2);
+}
+
+
+/*****************************************************************
+*Class:ResampleTable                                             *
+*****************************************************************/
+
+void ResampleTable:: clear()
+{
+	if (KernelAz != NULL)
+		delete[] KernelAz;
+	if (KernelRg != NULL)
+		delete[] KernelRg;
+
+}
 /*****************************************************************/
 /*Class:RefDem*/
 /*****************************************************************/
@@ -69,6 +256,41 @@ void RefDem::getData(double lat_min, double lat_max, double lon_min, double lon_
 	hBand_dem = GDALGetRasterBand(pData_dem, 1);
 	GDALRasterIO(hBand_dem, GF_Read, UpperLeft[1], UpperLeft[0], Pixels, Lines, demBuffer, Pixels, Lines, GDT_Int16, 0, 0);
 	
+}
+
+void RefDem::getData(double lat_min, double lat_max, double lon_min, double lon_max, double extralat,
+	double extralon, int*&demBuffer, int& Lines, int& Pixels)
+{
+	lat_min -= extralat;
+	lat_max += extralat;
+	lon_min -= extralon;
+	lon_max += extralon;
+
+	double UpperLeft[2];//[LatIndex, LonIndex]
+	double LowerRight[2];
+
+	//
+	getIndex(lat_max, lon_min, UpperLeft);
+	getIndex(lat_min, lon_max, LowerRight);
+	UpperLeft[0] = floor(UpperLeft[0]);
+	UpperLeft[1] = floor(UpperLeft[1]);
+	LowerRight[0] = ceil(LowerRight[0]);
+	LowerRight[1] = ceil(LowerRight[1]);
+
+	Lines = LowerRight[0] - UpperLeft[0] + 1;
+	Pixels = LowerRight[1] - UpperLeft[1] + 1;
+
+	short *TmpDem = new short[Lines*Pixels];
+	demBuffer = new int[Lines*Pixels];
+	GDALRasterBandH hBand_dem;
+	hBand_dem = GDALGetRasterBand(pData_dem, 1);
+	GDALRasterIO(hBand_dem, GF_Read, UpperLeft[1], UpperLeft[0], Pixels, Lines, TmpDem, Pixels, Lines, GDT_Int16, 0, 0);
+	
+	for (int i = 0; i < Lines*Pixels; i++)
+	{
+		demBuffer[i] = TmpDem[i];
+	}
+	delete[] TmpDem;
 }
 
 void RefDem::getIndex(double lat, double lon, double Res[2])

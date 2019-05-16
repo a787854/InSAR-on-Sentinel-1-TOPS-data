@@ -1,8 +1,9 @@
 #ifndef CONSTANTS_H
 #define  CONSTANTS_H
-#include <math.h>
-char eachLine[4 * 258];//For reading a line
 
+#include <math.h>
+
+static char eachLine[4 * 258];//For reading a line
 #define SOL 299792458.0
 #define PI 3.1415926535897931e+0
 #define Interval 2047
@@ -40,11 +41,4 @@ inline double abs3D(double x[3]){ return sqrt(sqr(x[0]) + sqr(x[1]) + sqr(x[2]))
 
 
 
-
-
-
-
-
-
-
-#endif
+#endif//CONSTANTS_H

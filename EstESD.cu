@@ -74,19 +74,13 @@ __global__ void DoubleDifference4OneD(short2 *MasterFor, short2 *MasterBack,
 		short2 Temp2 = MasterBack[i];
 
 
-		/*if (row == 100 && col == 1000)
-		{
-			printf("MasterFor:(%d,%d)\n", MasterFor[i].x, MasterFor[i].y);
-			printf("MasterBack:(%d,%d)\n", MasterBack[i].x, MasterBack[i].y);
-			printf("SlaveFor:(%lf,%lf)\n", SlaveFor[i].x, SlaveFor[i].y);
-			printf("SlaveBack:(%lf,%lf)\n", SlaveBack[i].x, SlaveBack[i].y);
-
-
-		}*/
+	
 		
 
 		SlaveBack[i] = cuCmulf(cuCmulf(make_cuComplex(Temp1.x, Temp1.y), cuConjf(SlaveFor[i])),
 			cuConjf(cuCmulf(make_cuComplex(Temp2.x, Temp2.y), cuConjf(SlaveBack[i]))));
+
+
 
 	
 
@@ -891,9 +885,8 @@ void EstESDShifts(
 
 	//delete[] SumOverlap;
 	cudaFreeHost(SumOverlap);
-	//exit(0);
 	cudaDeviceReset();
 	delete[] PrefixOvlines;
-
+	
 
 }

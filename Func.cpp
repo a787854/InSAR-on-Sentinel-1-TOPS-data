@@ -1890,7 +1890,7 @@ extern "C"	void GeoCoreg_warp_cuda(
 	double s_rangeSpacing,
 	bool m_nearRangeOnLeft,
 	bool s_nearRangeOnLeft,
-	short* inputDEM,
+	int* inputDEM,
 	double *m_x_coef,
 	double *m_y_coef,
 	double *m_z_coef,
@@ -1936,7 +1936,7 @@ int GeometricCoreg(SubSwathInfo& M_Swath, SubSwathInfo& S_Swath, S1PreciseOrbit 
 		double extralat = 24 * TopoDem.deltaLat;
 		double extralon = 24 * TopoDem.deltaLon;
 		int DemLines, DemPixels;
-		short* DemArray = NULL;
+		int* DemArray = NULL;
 		TopoDem.getData(lat_min, lat_max, lon_min, lon_max, extralat, extralon,
 			DemArray, DemLines, DemPixels);
 
@@ -1955,7 +1955,7 @@ int GeometricCoreg(SubSwathInfo& M_Swath, SubSwathInfo& S_Swath, S1PreciseOrbit 
 
 
 
-
+		
 
 		GeoCoreg_warp_cuda(burstId, burstId + BurstGap, xmin, xmax, ymin, ymax, TopoDem.deltaLat,
 			TopoDem.deltaLon, DemLines, DemPixels, TFCoef.getAzCoeff(burstId), TFCoef.getRgCoeff(burstId),
@@ -2069,7 +2069,6 @@ int DerampAndResample(SubSwathInfo& M_Swath, SubSwathInfo& S_Swath, TransFormCoe
 		DerampDemodResample(Slave, CpmAz, CpmRg, 0.0, ReSlave, ReTable.KernelAz, ReTable.KernelRg, SburstId, sPixels,
 			sLines, MasterBox, SlaveBox, SburstLines, SburstPixels, S_Swath.azimuthTimeInterval, S_Swath.dopplerRate,
 			S_Swath.referenceTime, S_Swath.dopplerCentroid, RePoints);
-
 
 
 
@@ -2356,6 +2355,7 @@ int ESDAndCoh(SubSwathInfo& M_Swath, SubSwathInfo& S_Swath, TransFormCoef& TFCoe
 			CoherenceEst_ESD(0, y0, samplesPerBurst, linesPerBurst, dx, dy, coh_rg, coh_az, MasterIn,
 				d_ReSlave, Coh);
 
+			
 
 			//Output Coherence image
 			CohRes.WriteFloat(MasterBox[0], MasterBox[2] - startLines, linesPerBurst, samplesPerBurst, Coh);

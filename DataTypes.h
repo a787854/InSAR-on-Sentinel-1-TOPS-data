@@ -5,6 +5,7 @@
 #include <string>
 #include <iostream>
 #include <complex>
+#include <fstream>
 #include "../include/ogr_api.h"
 #include "../include/ogr_core.h"
 #include "../include/ogr_srs_api.h"
@@ -47,8 +48,9 @@ struct LatLonMaxMin
 
 };
 
-struct SubSwathInfo
+class SubSwathInfo
 {
+public:
 	//subswath info
 	string subSwathName;
 	string ImgPath;
@@ -129,74 +131,14 @@ struct SubSwathInfo
 	double* z_vel = NULL;
 
 
-	int clear()
-	{
-		if (firstValidSample != NULL)
-			delete[]firstValidSample;
+	int clear();
 
-		if (lastValidSample != NULL)
-			delete[]lastValidSample;
-
-		if (rangeDependDopplerRate != NULL)
-			delete[]rangeDependDopplerRate;
-
-		if (dopplerRate != NULL)
-			delete[]dopplerRate;
-
-		if (referenceTime != NULL)
-			delete[]referenceTime;
-
-		if (dopplerCentroid != NULL)
-			delete[]dopplerCentroid;
-
-
-		if (azimuthTime != NULL)
-			delete[]azimuthTime;
-
-		if (slantRangeTime != NULL)
-			delete[]slantRangeTime;
-
-		if (latitude != NULL)
-			delete[]latitude;
-
-		if (longitude != NULL)
-			delete[]longitude;
-
-		if (incidenceAngle != NULL)
-			delete[]incidenceAngle;
-
-		if (orbitAzTime != NULL)
-			delete[]orbitAzTime;
-
-		if (x_pos != NULL)
-			delete[]x_pos;
-
-		if (y_pos != NULL)
-			delete[]y_pos;
-
-		if (z_pos != NULL)
-			delete[]z_pos;
-
-		if (x_vel != NULL)
-			delete[]x_vel;
-
-		if (y_vel != NULL)
-			delete[]y_vel;
-
-		if (z_vel != NULL)
-			delete[]z_vel;
-
-		if (latlonBurst != NULL)
-			delete[]latlonBurst;
-
-		return 1;
-
-	}
 
 
 };
-struct SentinelTOPS
+class SentinelTOPS
 {
+public:
 	SubSwathInfo *SubSwath;
 	string MissionID;
 	double azimuthSpacing;
@@ -208,61 +150,16 @@ struct SentinelTOPS
 	double lon_max;
 	double lon_min;
 
-	double getPRF()
-	{
-		if (SubSwath != NULL)
-		{
-			return SubSwath[0].prf;
-		}
-		else
-		{
-			return -999999;
-		}
-	}
+	double getPRF();//Get azimuth sampling rate
+	double getABW();//Get azimuth bandwidth
+	double getRSR2X();// Get two times of range sampling rate
+	void clear();
 
-	double getABW()
-	{
-		if (SubSwath != NULL)
-		{
-			return SubSwath[0].azimuth_bandwidth;
-		}
-		else
-		{
-			return -999999;
-		}
-	}
-
-	double getRSR2X()
-	{
-		if (SubSwath != NULL)
-		{
-			return SubSwath[0].rangeSamplingRate*2;
-		}
-		else
-		{
-			return -999999;
-		}
-
-	}
-
-	void clear()
-	{
-
-		if (SubSwath != NULL)
-		{
-			for (int i = 0; i < NumSubSwath; i++)
-			{
-				SubSwath[i].clear();
-			}
-			delete[] SubSwath;
-			SubSwath = NULL;
-		}
-
-	}
 };
 
-struct S1PreciseOrbit
+class S1PreciseOrbit
 {
+public:
 	int NumPoints;
 	int NumCoeff;
 	double TimeInerval;
@@ -278,76 +175,30 @@ struct S1PreciseOrbit
 	double *coef_y;
 	double *coef_z;
 
-	void clear()
-	{
-		if (orbitAzTime != NULL)
-			delete[] orbitAzTime;
-
-		if (x_pos != NULL)
-			delete[] x_pos;
-
-		if (y_pos != NULL)
-			delete[] y_pos;
-
-		if (z_pos != NULL)
-			delete[] z_pos;
-
-		if (x_vel != NULL)
-			delete[] x_vel;
-
-		if (y_vel != NULL)
-			delete[] y_vel;
-
-		if (z_vel != NULL)
-			delete[] z_vel;
-
-		if (coef_x != NULL)
-			delete[] coef_x;
-
-		if (coef_y != NULL)
-			delete[] coef_y;
-
-		if (coef_z != NULL)
-			delete[] coef_z;
-	}
+	void clear();
 };
 
-struct ellipsoid_WGS84
+class ellipsoid_WGS84
 {
-
+public:
 	double e2;
 	double e2b;
 	double a;
 	double b;
 
-	ellipsoid_WGS84()
-	{
-		a = 6378137.0;
-		b = 6356752.3142451794975639665996337;
-		e2 = 1.0 - (b / a)*(b / a);
-		e2b = e2 / (1 - e2);
-	}
+	ellipsoid_WGS84();
 };
 
-struct ResampleTable
+class  ResampleTable
 {
+public:
 	int Npoints;
-	float* KernelAz;
-	float* KernelRg;
+	float* KernelAz=NULL;
+	float* KernelRg=NULL;
 
-	ResampleTable()
-	{
-		KernelAz = NULL;
-		KernelRg = NULL;
-	}
-	void clear()
-	{
-		if (KernelAz != NULL)
-			delete[] KernelAz;
-		if (KernelRg != NULL)
-			delete[] KernelRg;
 
-	}
+	void clear();
+
 };
 
 class RefDem
@@ -369,6 +220,8 @@ class RefDem
 	void getData(int x0, int y0, int ww, int hh, short* demBuffer);
 	void getData(double lat_min, double lat_max, double lon_min, double lon_max, double extralat,
 		double extralon, short*&demBuffer, int& Lines, int& Pixels);
+	void RefDem::getData(double lat_min, double lat_max, double lon_min, double lon_max, double extralat,
+		double extralon, int*&demBuffer, int& Lines, int& Pixels);
 	void getIndex(double lat, double lon, double Res[2]);
 	
 };

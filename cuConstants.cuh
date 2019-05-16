@@ -54,17 +54,15 @@ inline __device__ double normalizeWarp(double data, double min, double max)
 	return (data - (0.5*(min + max))) / (0.25*(max - min));
 }
 
-__device__ __host__ inline double my_polyval(double x, double y, double *coeff)
+__device__ __host__ inline static double my_polyval(double x, double y, double *coeff)
 {
-	double sum = coeff[0];
+	 
 
-	sum += (coeff[1] * x
+	return (coeff[0]+coeff[1] * x
 		+ coeff[2] * y
 		+ coeff[3] * x*x
 		+ coeff[4] * x*y
 		+ coeff[5] * y*y);
-
-	return sum;
 }
 
 #endif
