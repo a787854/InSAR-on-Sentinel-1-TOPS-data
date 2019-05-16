@@ -100,7 +100,7 @@ __global__ void CohMatSet(cuComplex *DstMaster, cuComplex *DstSlave, cuComplex *
 __global__ void CohMatSet
 (cuComplex *DstMaster, cuComplex *DstSlave, short2 *SrcMaster,
 cuComplex *SrcSlave, int SrcLines, int SrcPixels,
-size_t DstPitch, size_t SrcPitch, int dx, int dy)
+size_t DstPitch, size_t SrcSlavePitch,size_t SrcMasterPitch, int dx, int dy)
 {
 
 	const int row = blockIdx.y*blockDim.y + threadIdx.y;
@@ -114,20 +114,24 @@ size_t DstPitch, size_t SrcPitch, int dx, int dy)
 
 		cuComplex* rowDstMaster = (cuComplex *)((char*)DstMaster + (row + dy)*DstPitch);
 		cuComplex* rowDstSlave = (cuComplex *)((char*)DstSlave + (row + dy)*DstPitch);
-		short2* rowSrcMaster = (short2 *)((char*)SrcMaster + row*(SrcPitch / 2));
-		cuComplex* rowSrcSlave = (cuComplex *)((char*)SrcSlave + row*SrcPitch);
+		short2* rowSrcMaster = (short2 *)((char*)SrcMaster + row*SrcMasterPitch);
+		cuComplex* rowSrcSlave = (cuComplex *)((char*)SrcSlave + row*SrcSlavePitch);
 
 		cuComplex MasterTemp = make_cuComplex(rowSrcMaster[col].x, rowSrcMaster[col].y);
 		cuComplex SlaveTemp = rowSrcSlave[col];
+
+
+
 		rowDstMaster[col + dx] = cuCmulf(MasterTemp, cuConjf(SlaveTemp));;
 
-
-
+    
 		rowDstSlave[col + dx] = make_cuComplex(SlaveTemp.x*SlaveTemp.x + SlaveTemp.y*SlaveTemp.y,
 			MasterTemp.x*MasterTemp.x + MasterTemp.y*MasterTemp.y);
 
-	
+		
 
+	
+	
 		
 	}
 
@@ -175,7 +179,7 @@ __global__ void CuCplCoherence_vertical(cuComplex *Sum1Array, cuComplex* Power1A
 		}
 		Power1Array[(row + 1)*(DstPitch / 8) + col] = power1;
 
-
+	
 
 	}
 
@@ -260,6 +264,8 @@ __global__ void CohFirstLineSet(cuComplex *d_Sum1, cuComplex *d_Power1, int inpu
 
 		d_Sum1[col] = sum1;
 		d_Power1[col] = power1;
+
+		
 
 		
 
@@ -370,8 +376,16 @@ __global__ void CpCoh2(float *Res, cuComplex *Sum1Array, cuComplex *Power1Array,
 		cuComplex tmpPower = rowPower[col];
 
 
+		//if (row == 1000 && col == 5000)
+		//{
+		////printf("Judge Array:(%lf,%lf)\n", rowJudgeArray[col].x, rowJudgeArray[col].y);
+		//	printf("TmpSum:(%lf,%lf)\n", tmpSum.x, tmpSum.y);
+		//	printf("TmpPower:(%lf,%lf)\n", tmpPower.x, tmpPower.y);
+		//}
+
 		float pp = tmpPower.x*tmpPower.y;
 
+		
 
 
 
@@ -381,7 +395,7 @@ __global__ void CpCoh2(float *Res, cuComplex *Sum1Array, cuComplex *Power1Array,
 		}
 		else
 		{
-
+		
 
 			cuComplex TmpRes = (pp > 0.0) ? (cuCdivf(tmpSum, make_cuComplex(sqrt(pp), 0.0f))) : make_cuComplex(0.0f, 0.0f);
 
@@ -395,6 +409,43 @@ __global__ void CpCoh2(float *Res, cuComplex *Sum1Array, cuComplex *Power1Array,
 
 }
 
+__global__ void Cohbasic(float *Result, int inputLines, int inputPixels, size_t DstPitch)
+{
+
+
+	const int row = blockIdx.y*blockDim.y + threadIdx.y;
+	const int col = blockIdx.x*blockDim.x + threadIdx.x;
+
+
+	if (row < inputLines&&col < inputPixels)
+	{
+		int winY = c_winY;
+		int winX = c_winX;
+
+		cuComplex sum1 = make_cuComplex(0.0f, 0.0f);
+		cuComplex power1 = make_cuComplex(0.0f, 0.0f);
+		for (int j = 0; j < winY; j++)
+		{
+			for (int i = col; i < col + winX; i++)
+			{
+
+
+
+				sum1 = cuCaddf(sum1, tex2D(tex_input, i, row + j));
+				power1 = cuCaddf(power1, tex2D(tex_norms, i, row + j));
+
+
+			}
+		}
+
+		float p = power1.x*power1.y;
+
+		float* rowResult = (float *)((char*)Result + row*DstPitch);
+
+
+		rowResult[col] = (p > 0.0f) ? cuCabsf((cuCdivf(sum1, make_cuComplex(sqrt(p), 0.0f)))) : 0.0f;
+	}
+}
 
 
 
@@ -436,13 +487,16 @@ float* cohdata
 
 	cudaMallocPitch((void**)&d_TempMasterArray, &FloatPitch, Dw*sizeof(short2), Dh);// For copy in complex<short> data
 
-
+	
 
 	//for vertical prefix sum arrays
 	int Lines = MultipleOf32(Dh);
 	int cohw = Dw + cohWinRg - 1;
 	int cohh = Lines + cohWinAz - 1;
 	cudaMallocPitch((void**)&d_CohMat_Amp, &FloatPitch, Dw*sizeof(float), Lines);
+
+	
+
 	cudaMallocPitch((void**)&d_Sum1, &Pitch, Dw*sizeof(cuComplex), Lines);
 	cudaMallocPitch((void**)&d_Power1, &Pitch, Dw*sizeof(cuComplex), Lines);
 
@@ -479,8 +533,9 @@ float* cohdata
 
 
 	dim3 threads(16, 16);
-	dim3 Outblocks = dim3((Dw + 15) / 16, (Dh + 15) / 16);
-	dim3 Cohblocks = dim3((cohw + 15) / 16, (cohh + 15) / 16);
+	dim3 Outblocks = dim3((Dw + threads.x-1) /threads.x , (Dh + threads.y-1) / threads.y);
+	dim3 Cohblocks = dim3((cohw + threads.x-1) / threads.x, (cohh + threads.y-1) / threads.y);
+
 
 
 
@@ -500,6 +555,9 @@ float* cohdata
 	cudaMemcpy2DAsync(d_TempMasterArray, FloatPitch, masterArray, Dw*sizeof(short2),
 		Dw*sizeof(short2), Dh, cudaMemcpyHostToDevice, stream[0]);
 
+	cudaDeviceSynchronize();
+
+	
 
 
 	//Windows does not need to memset the array with zero values
@@ -510,7 +568,7 @@ float* cohdata
 
 	CohMatSet << <Outblocks, threads, 0, stream[0] >> >
 		(d_masterArray2, d_slaveArray2, d_TempMasterArray, d_slaveArray, Dh,
-		Dw, Pitch2, Pitch, dx, dy);
+		Dw, Pitch2, Pitch,FloatPitch, dx, dy);
 
 
 	//BindTexture
@@ -523,58 +581,95 @@ float* cohdata
 	dim3 blocks = dim3((Dw + threadsV.x - 1) / threadsV.x, (Dh - 1 + threadsV.y - 1) / threadsV.y);
 
 	
-
+	cudaDeviceSynchronize();
 
 	/*Hide the time for coping back the coherence map*/
 	int PartLines = Lines / 4;
 	int PartOffset = PartLines*numX;
 	int HostOffset = PartLines*Dw;
 
+	//
+	bool BasicOrNot = false;
+	bool OverlapOrNot = true;
+
 	
-
-	int PartNstep = PartLines / 8;
-	dim3 PartBlocksDiff((Dw + threads.x - 1) / threads.x, (PartLines - 1 + threads.y - 1) / threads.y);
-	dim3 PartBlocks((Dw + threads.x - 1) / threads.x, (PartLines + threads.y - 1) / threads.y);
-	int outputLines[4];
-	outputLines[0] = PartLines;
-	outputLines[1] = PartLines;
-	outputLines[2] = PartLines;
-	outputLines[3] = Dh - 3 * PartLines;
-
-
-
-	for (int N = 0; N < 4; N++)
+	if (OverlapOrNot)
 	{
-		CohFirstLineSet << <(Dw + 255) / 256, 256, 0, stream[N] >> >(d_Sum1 + N* PartOffset,
-			d_Power1 + N*PartOffset, Dw, Pitch2, N*PartLines);
+		/*Overlap transfer*/
 
-		CuCplCoherence_vertical << <PartBlocksDiff, threads, 0, stream[N] >> >
-			(d_Sum1 + N* PartOffset, d_Power1 + N*PartOffset, PartLines - 1, Dw, Pitch, N*PartLines);
-	
-
-		shfl_vertical << <Grid, blockSz, 0, stream[N] >> >(d_Sum1 + N*PartOffset, PitchPixels, Lines, PartNstep);
-		shfl_vertical << <Grid, blockSz, 0, stream[N] >> >(d_Power1 + N*PartOffset, PitchPixels, Lines, PartNstep);
-
-	
-		CpCoh2 << <PartBlocks, threads, 0, stream[N] >> >
-			(d_CohMat_Amp + N*PartOffset, d_Sum1 + N*PartOffset, d_Power1 + N*PartOffset,
-			d_slaveArray + N*PartOffset,
-			Pitch, FloatPitch, Pitch, PartLines);
-
-		cudaStreamSynchronize(stream[N]);
-
-		cudaMemcpy2DAsync(cohdata + N*HostOffset, Dw*sizeof(float),
-			d_CohMat_Amp + N*PartOffset, FloatPitch, Dw*sizeof(float), outputLines[N], cudaMemcpyDeviceToHost, stream[N]);
+		int PartNstep = PartLines / 8;
+		dim3 PartBlocksDiff((Dw + threads.x - 1) / threads.x, (PartLines - 1 + threads.y - 1) / threads.y);
+		dim3 PartBlocks((Dw + threads.x - 1) / threads.x, (PartLines + threads.y - 1) / threads.y);
+		
+		int outputLines[4];
+		outputLines[0] = PartLines;
+		outputLines[1] = PartLines;
+		outputLines[2] = PartLines;
+		outputLines[3] = Dh - 3 * PartLines;
 
 
+
+		for (int N = 0; N < 4; N++)
+		{
+			CohFirstLineSet << <(Dw + 255) / 256, 256, 0, stream[N] >> >(d_Sum1 + N* PartOffset,
+				d_Power1 + N*PartOffset, Dw, Pitch2, N*PartLines);
+
+			CuCplCoherence_vertical << <PartBlocksDiff, threads, 0, stream[N] >> >
+				(d_Sum1 + N* PartOffset, d_Power1 + N*PartOffset, PartLines - 1, Dw, Pitch, N*PartLines);
+
+
+			shfl_vertical << <Grid, blockSz, 0, stream[N] >> >(d_Sum1 + N*PartOffset, PitchPixels, Lines, PartNstep);
+			shfl_vertical << <Grid, blockSz, 0, stream[N] >> >(d_Power1 + N*PartOffset, PitchPixels, Lines, PartNstep);
+
+
+			CpCoh2 << <PartBlocks, threads, 0, stream[N] >> >
+				(d_CohMat_Amp + N*PartOffset, d_Sum1 + N*PartOffset, d_Power1 + N*PartOffset,
+				d_slaveArray + N*PartOffset,
+				Pitch, FloatPitch, Pitch, PartLines);
+
+			cudaStreamSynchronize(stream[N]);
+
+			cudaMemcpy2DAsync(cohdata + N*HostOffset, Dw*sizeof(float),
+				d_CohMat_Amp + N*PartOffset, FloatPitch, Dw*sizeof(float), outputLines[N], cudaMemcpyDeviceToHost, stream[N]);
+
+
+		}
 	}
 
-	/*Overlap transfer*/
+	
+	if (!OverlapOrNot)
+	{
+		
+		int threads1D = 256;
+		dim3 Blocks_vertical = dim3((Dw + threads.x - 1) / threads.x, (Dh - 1 + threads.y - 1) / threads.y);
+		CohFirstLineSet << <(Dw + threads1D - 1) / threads1D, threads1D,0,stream[2] >> >(d_Sum1, d_Power1, Dw, Pitch2, 0);
+		CuCplCoherence_vertical << <Blocks_vertical, threads, 0, stream[2] >> >(d_Sum1, d_Power1, Dh - 1, Dw, Pitch, 0);
+		shfl_vertical << <Grid, blockSz, 0, stream[2] >> >(d_Sum1, PitchPixels, Lines, Nstep);
+		shfl_vertical << <Grid, blockSz, 0, stream[2] >> >(d_Power1, PitchPixels, Lines, Nstep);
 
+		CpCoh2 << <Outblocks, threads,0, stream[2] >> >
+			(d_CohMat_Amp , d_Sum1 , d_Power1 ,d_slaveArray ,
+			Pitch, FloatPitch, Pitch, Dh);
+		cudaMemcpy2DAsync(cohdata , Dw*sizeof(float),
+			d_CohMat_Amp, FloatPitch, Dw*sizeof(float), Dh, cudaMemcpyDeviceToHost, stream[2]);
+	}
+
+	
+	if (BasicOrNot)
+	{
+		Cohbasic << <Outblocks, threads, 0, stream[3] >> >(d_CohMat_Amp, Dh, Dw, FloatPitch);
+
+		cudaMemcpy2DAsync(cohdata, Dw*sizeof(float),
+			d_CohMat_Amp, FloatPitch, Dw*sizeof(float), Dh, cudaMemcpyDeviceToHost, stream[3]);
+	}
+
+	
 
 	for (int i = 0; i<4; i++)
 		cudaStreamDestroy(stream[i]);
 	cudaEventRecord(g_stop, 0);
+
+	
 
 	cudaEventSynchronize(g_stop);
 	cudaEventElapsedTime(&time_cost2, g_start, g_stop);
@@ -613,6 +708,18 @@ float* cohdata
 
 
 }
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
