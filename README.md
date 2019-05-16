@@ -46,3 +46,8 @@ lastsubswath=The End Proccesing Subswath
 
 polarisation=Specific polarisation types
 
+Research Paper:
+"GPU accelerated interferometric SAR processing for Sentinel-1 TOPS data" (2019), Computers and Geosciences, Doi: https://doi.org/10.1016/j.cageo.2019.04.010.
+
+Contact:
+filippoyu0717@gmail.com
