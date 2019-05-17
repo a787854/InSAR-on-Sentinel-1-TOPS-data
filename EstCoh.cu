@@ -506,7 +506,6 @@ float* cohdata
 	int PitchPixels = Pitch / sizeof(cuComplex);
 	//For horizontal
 	//int Nstep = PitchPixels / 8;
-	PitchPixels = PitchPixels + 1;
 	if (PitchPixels% blockSz.x != 0)
 	{
 		cout << "Warning:PitchSize is not multiple of 32!" << endl;
