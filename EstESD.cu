@@ -11,11 +11,11 @@
 #include <iostream>
 #include<omp.h>
 #include <complex>
-#undef  __CUDA_INTERNAL_COMPILATION__
 #include <math.h>
 #include<time.h>
 #include<complex>
 #include <iostream>
+#include <helper_cuda.h>
 
 
 
@@ -550,7 +550,7 @@ __global__ void CpCoh2_ESD(float *Res, cuComplex *Sum1Array, cuComplex *Power1Ar
 
 
 
-void EstESDShifts(
+void EstESDShifts_Overlap(
 	complex<short>*MasterFor, //Input
 	complex<short>*MasterBack, //Input
 	complex<float>*SlaveFor,// Input
@@ -575,7 +575,7 @@ void EstESDShifts(
 
 	unsigned int ArraySize = ArrayLines*ArrayPixels;
 
-
+	
 
 	cudaHostRegister(MasterFor, ArraySize*sizeof(short2), cudaHostRegisterDefault);
 	cudaHostRegister(MasterBack, ArraySize*sizeof(short2), cudaHostRegisterDefault);
@@ -610,14 +610,14 @@ void EstESDShifts(
 	int dw = (CohWinRg - 1) / 2;
 	int dh = (CohWinAz - 1) / 2;
 
-
+	
 	
 	//for estimating coherence
-	cudaMallocPitch((void**)&d_MasterCoh, &d_pitchCohfloat2, cohw*sizeof(cuComplex), cohh*numOverlap);
-	cudaMallocPitch((void**)&d_SlaveCoh, &d_pitchCohfloat2, cohw*sizeof(cuComplex), cohh*numOverlap);
+	(cudaMallocPitch((void**)&d_MasterCoh, &d_pitchCohfloat2, cohw*sizeof(cuComplex), cohh*numOverlap));
+	(cudaMallocPitch((void**)&d_SlaveCoh, &d_pitchCohfloat2, cohw*sizeof(cuComplex), cohh*numOverlap));
 
-	cudaMallocPitch((void**)&d_coh1, &d_pitchCohfloat, ArrayPixels*sizeof(float), OverlapMaxLines*numOverlap);
-	cudaMallocPitch((void**)&d_coh2, &d_pitchCohfloat, ArrayPixels*sizeof(float), OverlapMaxLines*numOverlap);
+	(cudaMallocPitch((void**)&d_coh1, &d_pitchCohfloat, ArrayPixels*sizeof(float), OverlapMaxLines*numOverlap));
+	(cudaMallocPitch((void**)&d_coh2, &d_pitchCohfloat, ArrayPixels*sizeof(float), OverlapMaxLines*numOverlap));
 
 
 
@@ -632,9 +632,9 @@ void EstESDShifts(
 
 	int blockNum1 = (blockNum + 255) / threadNum;
 
-	cudaMalloc((void**)&d_blockSum, numOverlap*blockNum*sizeof(cuComplex));
-	cudaMalloc((void**)&d_blockSum1, numOverlap*blockNum1*sizeof(cuComplex));
-	cudaMalloc((void**)&d_blockSum2, numOverlap*sizeof(cuComplex));
+	(cudaMalloc((void**)&d_blockSum, numOverlap*blockNum*sizeof(cuComplex)));
+	(cudaMalloc((void**)&d_blockSum1, numOverlap*blockNum1*sizeof(cuComplex)));
+	(cudaMalloc((void**)&d_blockSum2, numOverlap*sizeof(cuComplex)));
 
 
 
@@ -698,12 +698,8 @@ void EstESDShifts(
 	int PartSteps = OverlapMaxLines / 8;
 
 
-	cudaStream_t stream[12];
-	for (int i = 0; i < numOverlap; i++)
-	{
-		cudaStreamCreate(&stream[i]);
-	}
 
+	bool OverlaporNot = false;
 
 	int ArrayPixels42 = ArrayPixels % 2 ? ArrayPixels42 + 1 : ArrayPixels;
 	dim3 threadsV(128, 2);
@@ -713,134 +709,151 @@ void EstESDShifts(
 	cudaEventCreate(&g_stop);
 	cudaEventRecord(g_start, 0);
 
-	for (int i = 0; i < numOverlap; i++)
+	if (OverlaporNot)
 	{
-		int overlapLines = OverlapSizeArray[i];
-		int overlapN = overlapLines*ArrayPixels;
-		int LinesOffset = PrefixOvlines[i];
-		int DeviceOffset = LinesOffset*ArrayPixels;
-		int CohOffset2 = i*cohh*d_pitchCohfloat2 / sizeof(cuComplex);
-		int CohOffset1 = OverlapMaxLines*i*d_pitchCohfloat / sizeof(float);
-		int SumOffset = OverlapMaxLines*i*d_pitchCohTmp / sizeof(cuComplex);
-		
-
-		dim3 PartBlocksDiff((ArrayPixels + threadsV.x - 1) / threadsV.x,
-			(overlapLines - 1 + threadsV.y - 1) / threadsV.y);
-		dim3 PartBlocksDiff42((ArrayPixels42 / 2 + threadsV.x - 1) / threadsV.x,
-			(OverlapMaxLines - 1 + threadsV.y - 1) / threadsV.y);
-
-		int tmpBlockNum = (overlapLines*ArrayPixels + threadNum - 1) / threadNum;
-		int s = (tmpBlockNum + 255) / 256;
-		int s1 = (s + 255) / 256;
-
-		dim3 dimGrid = dim3(tmpBlockNum, 1, 1);
-		dim3 dimBlocks = dim3(threadNum, 1, 1);
-
-		blocks = dim3((ArrayPixels + 15) / 16, (overlapLines + 15) / 16);
-		dim3 threads42 = dim3(64, 4);
-		dim3 blocks42 = dim3((ArrayPixels + threads42.x - 1) / threads42.x, (OverlapMaxLines / 2 + threads42.y - 1) / threads42.y);
-
-
-		cudaMemcpyAsync(d_MasterFor + DeviceOffset, MasterFor + DeviceOffset,
-			overlapN*sizeof(short2), cudaMemcpyHostToDevice, stream[i]);
-		cudaMemcpyAsync(d_MasterBack + DeviceOffset, MasterBack + DeviceOffset,
-			overlapN*sizeof(short2), cudaMemcpyHostToDevice, stream[i]);
-		cudaMemcpyAsync(d_SlaveFor + DeviceOffset, SlaveFor + DeviceOffset,
-			overlapN*sizeof(cuComplex), cudaMemcpyHostToDevice, stream[i]);
-		cudaMemcpyAsync(d_SlaveBack + DeviceOffset, SlaveBack + DeviceOffset,
-			overlapN*sizeof(cuComplex), cudaMemcpyHostToDevice, stream[i]);
 
 
 
-		//cudaMemsetAsync(d_MasterCoh + CohOffset2, 0, d_pitchCohfloat2*cohh, stream[i]);
-		//cudaMemsetAsync(d_SlaveCoh + CohOffset2, 0, d_pitchCohfloat2*cohh, stream[i]);
+		cudaStream_t stream[12];
+		for (int i = 0; i < numOverlap; i++)
+		{
+			cudaStreamCreate(&stream[i]);
+		}
 
-		//Estimating the coherence of forward overlap band 
-		CohMatrixSet << <blocks, threads, 0, stream[i] >> >(d_MasterFor + DeviceOffset, d_SlaveFor + DeviceOffset,
-			d_MasterCoh + CohOffset2, d_SlaveCoh + CohOffset2,
-			overlapLines, ArrayPixels, dh, dw, d_pitchCohfloat2);
-
-		CohFirstLineSet_ESD << <(ArrayPixels + 255) / 256, 256, 0, stream[i] >> >(d_sum1 + SumOffset,
-			d_power1 + SumOffset, d_MasterCoh + CohOffset2, d_SlaveCoh + CohOffset2, CohWinAz, CohWinRg,
-			ArrayPixels, d_pitchCohfloat2);
-
-
-		CohDiffer_vertical_ESD << <PartBlocksDiff, threadsV, 0, stream[i] >> >(d_sum1 + SumOffset,
-			d_power1 + SumOffset, d_MasterCoh + CohOffset2, d_SlaveCoh + CohOffset2, CohWinAz, CohWinRg,
-			overlapLines - 1, ArrayPixels,
-			d_pitchCohfloat2, d_pitchCohTmp);
+		for (int i = 0; i < numOverlap; i++)
+		{
+			int overlapLines = OverlapSizeArray[i];
+			int overlapN = overlapLines*ArrayPixels;
+			int LinesOffset = PrefixOvlines[i];
+			int DeviceOffset = LinesOffset*ArrayPixels;
+			int CohOffset2 = i*cohh*d_pitchCohfloat2 / sizeof(cuComplex);
+			int CohOffset1 = OverlapMaxLines*i*d_pitchCohfloat / sizeof(float);
+			int SumOffset = OverlapMaxLines*i*d_pitchCohTmp / sizeof(cuComplex);
 
 
+			dim3 PartBlocksDiff((ArrayPixels + threadsV.x - 1) / threadsV.x,
+				(overlapLines - 1 + threadsV.y - 1) / threadsV.y);
+			dim3 PartBlocksDiff42((ArrayPixels42 / 2 + threadsV.x - 1) / threadsV.x,
+				(OverlapMaxLines - 1 + threadsV.y - 1) / threadsV.y);
+
+			int tmpBlockNum = (overlapLines*ArrayPixels + threadNum - 1) / threadNum;
+			int s = (tmpBlockNum + 255) / 256;
+			int s1 = (s + 255) / 256;
+
+			dim3 dimGrid = dim3(tmpBlockNum, 1, 1);
+			dim3 dimBlocks = dim3(threadNum, 1, 1);
+
+			blocks = dim3((ArrayPixels + 15) / 16, (overlapLines + 15) / 16);
+			dim3 threads42 = dim3(64, 4);
+			dim3 blocks42 = dim3((ArrayPixels + threads42.x - 1) / threads42.x, (OverlapMaxLines / 2 + threads42.y - 1) / threads42.y);
 
 
-		shfl_vertical_ESD << <GridPrefix, blockSz, 0, stream[i] >> >(d_sum1 + SumOffset, numX, OverlapMaxLines, PartSteps);
-		shfl_vertical_ESD << <GridPrefix, blockSz, 0, stream[i] >> >(d_power1 + SumOffset, numX, OverlapMaxLines, PartSteps);
-
-		CpCoh2_ESD << <blocks, threads, 0, stream[i] >> >(d_coh1 + CohOffset1,
-			d_sum1 + SumOffset, d_power1 + SumOffset, overlapLines, ArrayPixels, d_pitchCohTmp, d_pitchCohfloat);
-
-
-		//Estimating the coherence of backward overlap band 
-
-		CohMatrixSet << <blocks, threads, 0, stream[i] >> >(d_MasterBack + DeviceOffset, d_SlaveBack + DeviceOffset,
-			d_MasterCoh + CohOffset2, d_SlaveCoh + CohOffset2,
-			overlapLines, ArrayPixels, dh, dw, d_pitchCohfloat2);
-
-
-		CohFirstLineSet_ESD << <(ArrayPixels + 255) / 256, 256, 0, stream[i] >> >(d_sum1 + SumOffset,
-			d_power1 + SumOffset, d_MasterCoh + CohOffset2, d_SlaveCoh + CohOffset2, CohWinAz, CohWinRg,
-			ArrayPixels, d_pitchCohfloat2);
-
-		CohDiffer_vertical_ESD << <PartBlocksDiff, threadsV, 0, stream[i] >> >(d_sum1 + SumOffset,
-			d_power1 + SumOffset, d_MasterCoh + CohOffset2, d_SlaveCoh + CohOffset2, CohWinAz, CohWinRg,
-			overlapLines - 1, ArrayPixels, d_pitchCohfloat2, d_pitchCohTmp);
-
-
-
-		shfl_vertical_ESD << <GridPrefix, blockSz, 0, stream[i] >> >(d_sum1 + SumOffset, numX, OverlapMaxLines, PartSteps);
-		shfl_vertical_ESD << <GridPrefix, blockSz, 0, stream[i] >> >(d_power1 + SumOffset, numX, OverlapMaxLines, PartSteps);
-
-		CpCoh2_ESD << <blocks, threads, 0, stream[i] >> >(d_coh2 + CohOffset1,
-			d_sum1 + SumOffset, d_power1 + SumOffset, overlapLines, ArrayPixels, d_pitchCohTmp, d_pitchCohfloat);
+			cudaMemcpyAsync(d_MasterFor + DeviceOffset, MasterFor + DeviceOffset,
+				overlapN*sizeof(short2), cudaMemcpyHostToDevice, stream[i]);
+			cudaMemcpyAsync(d_MasterBack + DeviceOffset, MasterBack + DeviceOffset,
+				overlapN*sizeof(short2), cudaMemcpyHostToDevice, stream[i]);
+			cudaMemcpyAsync(d_SlaveFor + DeviceOffset, SlaveFor + DeviceOffset,
+				overlapN*sizeof(cuComplex), cudaMemcpyHostToDevice, stream[i]);
+			cudaMemcpyAsync(d_SlaveBack + DeviceOffset, SlaveBack + DeviceOffset,
+				overlapN*sizeof(cuComplex), cudaMemcpyHostToDevice, stream[i]);
 
 
 
-		//Average the coherence of forward and backward bands
-		Divide2 << <blocks, threads, 0, stream[i] >> > (d_coh1 + CohOffset1, d_coh2 + CohOffset1, d_pitchCohfloat, overlapLines, ArrayPixels);
-		//cudaStreamSynchronize(stream[i]);
-		//Estimte the double differential interferogram
-		DoubleDifference4OneD << <blocks, threads, 0, stream[i] >> >
-			(d_MasterFor + DeviceOffset, d_MasterBack + DeviceOffset,
-			d_SlaveFor + DeviceOffset, d_SlaveBack + DeviceOffset,
-			overlapLines, ArrayPixels);
+			//cudaMemsetAsync(d_MasterCoh + CohOffset2, 0, d_pitchCohfloat2*cohh, stream[i]);
+			//cudaMemsetAsync(d_SlaveCoh + CohOffset2, 0, d_pitchCohfloat2*cohh, stream[i]);
 
-		//Masking out incoherent pixels
-		MaskOut << <blocks, threads, 0, stream[i] >> >(d_SlaveBack + DeviceOffset, d_coh1 + CohOffset1, CohThresHold, overlapLines, ArrayPixels,
-			d_pitchCohfloat);
+			//Estimating the coherence of forward overlap band 
+			CohMatrixSet << <blocks, threads, 0, stream[i] >> >(d_MasterFor + DeviceOffset, d_SlaveFor + DeviceOffset,
+				d_MasterCoh + CohOffset2, d_SlaveCoh + CohOffset2,
+				overlapLines, ArrayPixels, dh, dw, d_pitchCohfloat2);
 
-		//Using parallel recuding operation to accumulate ESD phases
-
-		reduce0 << <tmpBlockNum, 256, 0, stream[i] >> >(d_SlaveBack + DeviceOffset, d_blockSum + i*blockNum, overlapLines*ArrayPixels);
+			CohFirstLineSet_ESD << <(ArrayPixels + 255) / 256, 256, 0, stream[i] >> >(d_sum1 + SumOffset,
+				d_power1 + SumOffset, d_MasterCoh + CohOffset2, d_SlaveCoh + CohOffset2, CohWinAz, CohWinRg,
+				ArrayPixels, d_pitchCohfloat2);
 
 
-		reduce0 << <s, 256, 0, stream[i] >> >(d_blockSum + i*blockNum, d_blockSum1 + i*blockNum1, tmpBlockNum);
+			CohDiffer_vertical_ESD << <PartBlocksDiff, threadsV, 0, stream[i] >> >(d_sum1 + SumOffset,
+				d_power1 + SumOffset, d_MasterCoh + CohOffset2, d_SlaveCoh + CohOffset2, CohWinAz, CohWinRg,
+				overlapLines - 1, ArrayPixels,
+				d_pitchCohfloat2, d_pitchCohTmp);
 
 
-		reduce0 << <s1, 256, 0, stream[i] >> >(d_blockSum1 + i*blockNum1, d_blockSum2 + i, (tmpBlockNum + 255) / 256);
 
 
-		//cudaStreamSynchronize(stream[i]);
+			shfl_vertical_ESD << <GridPrefix, blockSz, 0, stream[i] >> >(d_sum1 + SumOffset, numX, OverlapMaxLines, PartSteps);
+			shfl_vertical_ESD << <GridPrefix, blockSz, 0, stream[i] >> >(d_power1 + SumOffset, numX, OverlapMaxLines, PartSteps);
 
+			CpCoh2_ESD << <blocks, threads, 0, stream[i] >> >(d_coh1 + CohOffset1,
+				d_sum1 + SumOffset, d_power1 + SumOffset, overlapLines, ArrayPixels, d_pitchCohTmp, d_pitchCohfloat);
+
+
+			//Estimating the coherence of backward overlap band 
+
+			CohMatrixSet << <blocks, threads, 0, stream[i] >> >(d_MasterBack + DeviceOffset, d_SlaveBack + DeviceOffset,
+				d_MasterCoh + CohOffset2, d_SlaveCoh + CohOffset2,
+				overlapLines, ArrayPixels, dh, dw, d_pitchCohfloat2);
+
+
+			CohFirstLineSet_ESD << <(ArrayPixels + 255) / 256, 256, 0, stream[i] >> >(d_sum1 + SumOffset,
+				d_power1 + SumOffset, d_MasterCoh + CohOffset2, d_SlaveCoh + CohOffset2, CohWinAz, CohWinRg,
+				ArrayPixels, d_pitchCohfloat2);
+
+			CohDiffer_vertical_ESD << <PartBlocksDiff, threadsV, 0, stream[i] >> >(d_sum1 + SumOffset,
+				d_power1 + SumOffset, d_MasterCoh + CohOffset2, d_SlaveCoh + CohOffset2, CohWinAz, CohWinRg,
+				overlapLines - 1, ArrayPixels, d_pitchCohfloat2, d_pitchCohTmp);
+
+
+
+			shfl_vertical_ESD << <GridPrefix, blockSz, 0, stream[i] >> >(d_sum1 + SumOffset, numX, OverlapMaxLines, PartSteps);
+			shfl_vertical_ESD << <GridPrefix, blockSz, 0, stream[i] >> >(d_power1 + SumOffset, numX, OverlapMaxLines, PartSteps);
+
+			CpCoh2_ESD << <blocks, threads, 0, stream[i] >> >(d_coh2 + CohOffset1,
+				d_sum1 + SumOffset, d_power1 + SumOffset, overlapLines, ArrayPixels, d_pitchCohTmp, d_pitchCohfloat);
+
+
+
+			//Average the coherence of forward and backward bands
+			Divide2 << <blocks, threads, 0, stream[i] >> > (d_coh1 + CohOffset1, d_coh2 + CohOffset1, d_pitchCohfloat, overlapLines, ArrayPixels);
+			//cudaStreamSynchronize(stream[i]);
+			//Estimte the double differential interferogram
+			DoubleDifference4OneD << <blocks, threads, 0, stream[i] >> >
+				(d_MasterFor + DeviceOffset, d_MasterBack + DeviceOffset,
+				d_SlaveFor + DeviceOffset, d_SlaveBack + DeviceOffset,
+				overlapLines, ArrayPixels);
+
+			//Masking out incoherent pixels
+			MaskOut << <blocks, threads, 0, stream[i] >> >(d_SlaveBack + DeviceOffset, d_coh1 + CohOffset1, CohThresHold, overlapLines, ArrayPixels,
+				d_pitchCohfloat);
+
+			//Using parallel recuding operation to accumulate ESD phases
+
+			reduce0 << <tmpBlockNum, 256, 0, stream[i] >> >(d_SlaveBack + DeviceOffset, d_blockSum + i*blockNum, overlapLines*ArrayPixels);
+
+
+			reduce0 << <s, 256, 0, stream[i] >> >(d_blockSum + i*blockNum, d_blockSum1 + i*blockNum1, tmpBlockNum);
+
+
+			reduce0 << <s1, 256, 0, stream[i] >> >(d_blockSum1 + i*blockNum1, d_blockSum2 + i, (tmpBlockNum + 255) / 256);
+
+
+			//cudaStreamSynchronize(stream[i]);
+
+		}
+
+		for (int i = 0; i < numOverlap; i++)
+		{
+			cudaStreamDestroy(stream[i]);
+		}
 	}
 
-
+	
 
 	cudaMemcpy(SumOverlap, d_blockSum2, numOverlap * sizeof(cuComplex), cudaMemcpyDeviceToHost);
 
 	cudaEventRecord(g_stop, 0);
 	cudaEventSynchronize(g_stop);
 	cudaEventElapsedTime(&time_cost, g_start, g_stop);
-	cout << "ESDCorretion duration:" << time_cost << endl;
+	cout << "ESDCorretion duration:" << time_cost<<"ms" << endl;
 	cudaEventDestroy(g_start);
 	cudaEventDestroy(g_stop);
 	//ofstream ShiftOut("E:\\ESDTimer.txt", ios::app);
@@ -853,10 +866,7 @@ void EstESDShifts(
 		ShiftArray[i] = atan2((double)SumOverlap[i].y, (double)SumOverlap[i].x) / (2 * CUDART_PI*spectralSeparation*azimuthTimeInterval);
 	}
 
-	for (int i = 0; i < numOverlap; i++)
-	{
-		cudaStreamDestroy(stream[i]);
-	}
+	
 
 
 
@@ -888,5 +898,383 @@ void EstESDShifts(
 	cudaDeviceReset();
 	delete[] PrefixOvlines;
 	
+
+}
+
+void EstESDShifts_NonOverlap(
+	complex<short>*MasterFor, //Input
+	complex<short>*MasterBack, //Input
+	complex<float>*SlaveFor,// Input
+	complex<float>*SlaveBack, //Input
+	int* OverlapSizeArray, //Input
+	double * ShiftArray,//Output
+	int numOverlap,
+	int ArrayLines,
+	int ArrayPixels,
+	int CohWinAz,
+	int CohWinRg,
+	int OverlapMaxLines,
+	float CohThresHold,
+	double spectralSeparation,
+	double azimuthTimeInterval
+	)
+{
+	short2 *d_MasterFor, *d_MasterBack;
+	cuComplex *d_SlaveFor, *d_SlaveBack;
+
+
+	unsigned int ArraySize = ArrayLines*ArrayPixels;
+
+
+
+	cudaHostRegister(MasterFor, ArraySize*sizeof(short2), cudaHostRegisterDefault);
+	cudaHostRegister(MasterBack, ArraySize*sizeof(short2), cudaHostRegisterDefault);
+	cudaHostRegister(SlaveFor, ArraySize*sizeof(cuComplex), cudaHostRegisterDefault);
+	cudaHostRegister(SlaveBack, ArraySize*sizeof(cuComplex), cudaHostRegisterDefault);
+
+
+
+	size_t d_pitch4short2, //pitch for short2
+		d_pitch4float2; //pitch for float2
+
+	OverlapMaxLines = MultipleOf8_ESD(OverlapMaxLines);
+
+
+
+	//
+	cuComplex *SumOverlap;
+	cudaMallocHost((void**)&SumOverlap, numOverlap*sizeof(cuComplex));
+	size_t d_pitchCohfloat, d_pitchCohfloat2;
+	size_t MasterShortPitch, SlaveComplexPitch;
+	cuComplex *d_MasterCoh, *d_SlaveCoh;
+
+	float *d_coh1, *d_coh2;
+
+
+
+	int cohw = ArrayPixels + CohWinRg - 1;
+	int cohh = OverlapMaxLines + CohWinAz - 1;
+
+
+
+	int dw = (CohWinRg - 1) / 2;
+	int dh = (CohWinAz - 1) / 2;
+
+
+
+	//for estimating coherence
+	cudaMallocPitch((void**)&d_MasterCoh, &d_pitchCohfloat2, cohw*sizeof(cuComplex), cohh);
+	(cudaMallocPitch((void**)&d_SlaveCoh, &d_pitchCohfloat2, cohw*sizeof(cuComplex), cohh));
+
+	(cudaMallocPitch((void**)&d_coh1, &d_pitchCohfloat, ArrayPixels*sizeof(float), OverlapMaxLines));
+	(cudaMallocPitch((void**)&d_coh2, &d_pitchCohfloat, ArrayPixels*sizeof(float), OverlapMaxLines));
+
+
+
+
+	int FloatPixels = d_pitchCohfloat / 4;
+	int ComplexPixels = d_pitchCohfloat2 / 8;
+
+	//Set Reduce Parameters
+	cuComplex *d_blockSum, *d_blockSum1, *d_blockSum2;
+	int threadNum = 256;
+	int blockNum = (OverlapMaxLines*ArrayPixels + threadNum - 1) / threadNum;
+
+	int blockNum1 = (blockNum + 255) / threadNum;
+
+	(cudaMalloc((void**)&d_blockSum, blockNum*sizeof(cuComplex)));
+	(cudaMalloc((void**)&d_blockSum1, blockNum1*sizeof(cuComplex)));
+	(cudaMalloc((void**)&d_blockSum2, sizeof(cuComplex)));
+
+
+	int Maxize = OverlapMaxLines*ArrayPixels;
+	cudaMalloc((void**)&d_MasterFor, Maxize*sizeof(short2));
+	cudaMalloc((void**)&d_MasterBack, Maxize*sizeof(short2));
+
+	size_t d_pitchCohTmp;
+	cuComplex * d_sum1, *d_power1;
+	cudaMallocPitch((void**)&d_sum1, &d_pitchCohTmp, ArrayPixels*sizeof(cuComplex), OverlapMaxLines);
+	cudaMallocPitch((void**)&d_power1, &d_pitchCohTmp, ArrayPixels*sizeof(cuComplex), OverlapMaxLines);
+
+	//d_MasterBack = d_MasterFor + ArraySize;
+
+	cudaMalloc((void**)&d_SlaveFor, Maxize*sizeof(cuComplex));
+	cudaMalloc((void**)&d_SlaveBack, Maxize*sizeof(cuComplex));
+	//d_SlaveBack = d_SlaveFor + ArraySize;
+
+
+
+
+
+
+
+
+	dim3 threads(16, 16);
+	dim3 blocks((ArrayPixels + 15) / 16, (ArrayLines + 15) / 16);
+
+
+	int *PrefixOvlines = new int[numOverlap];
+
+
+	PrefixOvlines[0] = 0;
+	for (int i = 1; i < numOverlap; i++)
+	{
+		PrefixOvlines[i] = 0;
+		for (int j = 0; j < i; j++)
+		{
+			PrefixOvlines[i] += OverlapSizeArray[j];
+		}
+
+	}
+
+
+
+
+
+
+	dim3 blockSz(32, 8);
+	int PitchPixels = d_pitchCohTmp / sizeof(cuComplex);
+	//For horizontal
+	//int Nstep = PitchPixels / 8;
+
+	if (PitchPixels% blockSz.x != 0)
+	{
+		cout << "Errors:PitchSize is not multiple of 32!" << endl;
+		return;
+
+	}
+	int numX = PitchPixels;
+	dim3 GridPrefix(numX / blockSz.x, 1);
+	int PartSteps = OverlapMaxLines / 8;
+
+
+
+	bool OverlaporNot = false;
+
+	int ArrayPixels42 = ArrayPixels % 2 ? ArrayPixels42 + 1 : ArrayPixels;
+	dim3 threadsV(128, 2);
+	cudaEvent_t g_start, g_stop;
+	float time_cost;
+	cudaEventCreate(&g_start);
+	cudaEventCreate(&g_stop);
+	cudaEventRecord(g_start, 0);
+	if (!OverlaporNot)
+	{
+		for (int i = 0; i < numOverlap; i++)
+		{
+			int overlapLines = OverlapSizeArray[i];
+			int overlapN = overlapLines*ArrayPixels;
+			int LinesOffset = PrefixOvlines[i];
+			int DeviceOffset = LinesOffset*ArrayPixels;
+			int CohOffset2 = i*cohh*d_pitchCohfloat2 / sizeof(cuComplex);
+			int CohOffset1 = OverlapMaxLines*i*d_pitchCohfloat / sizeof(float);
+			int SumOffset = OverlapMaxLines*i*d_pitchCohTmp / sizeof(cuComplex);
+
+
+			dim3 PartBlocksDiff((ArrayPixels + threadsV.x - 1) / threadsV.x,
+				(overlapLines - 1 + threadsV.y - 1) / threadsV.y);
+			dim3 PartBlocksDiff42((ArrayPixels42 / 2 + threadsV.x - 1) / threadsV.x,
+				(OverlapMaxLines - 1 + threadsV.y - 1) / threadsV.y);
+
+			int tmpBlockNum = (overlapLines*ArrayPixels + threadNum - 1) / threadNum;
+			int s = (tmpBlockNum + 255) / 256;
+			int s1 = (s + 255) / 256;
+
+			dim3 dimGrid = dim3(tmpBlockNum, 1, 1);
+			dim3 dimBlocks = dim3(threadNum, 1, 1);
+
+			blocks = dim3((ArrayPixels + 15) / 16, (overlapLines + 15) / 16);
+			dim3 threads42 = dim3(64, 4);
+			dim3 blocks42 = dim3((ArrayPixels + threads42.x - 1) / threads42.x, (OverlapMaxLines / 2 + threads42.y - 1) / threads42.y);
+
+			cudaMemset(d_SlaveBack, 0, Maxize*sizeof(cuComplex));
+
+			cudaMemcpy(d_MasterFor , MasterFor + DeviceOffset,
+				overlapN*sizeof(short2), cudaMemcpyHostToDevice);
+			cudaMemcpy(d_MasterBack , MasterBack + DeviceOffset,
+				overlapN*sizeof(short2), cudaMemcpyHostToDevice);
+			cudaMemcpy(d_SlaveFor , SlaveFor + DeviceOffset,
+				overlapN*sizeof(cuComplex), cudaMemcpyHostToDevice);
+			cudaMemcpy(d_SlaveBack , SlaveBack + DeviceOffset,
+				overlapN*sizeof(cuComplex), cudaMemcpyHostToDevice);
+
+
+
+			cudaMemset(d_MasterCoh , 0, d_pitchCohfloat2*cohh);
+			cudaMemset(d_SlaveCoh , 0, d_pitchCohfloat2*cohh);
+
+			//Estimating the coherence of forward overlap band 
+			CohMatrixSet << <blocks, threads >> >(d_MasterFor , d_SlaveFor ,
+				d_MasterCoh , d_SlaveCoh, overlapLines, ArrayPixels, dh, dw, d_pitchCohfloat2);
+
+			CohFirstLineSet_ESD << <(ArrayPixels + 255) / 256, 256 >> >(d_sum1 ,
+				d_power1 , d_MasterCoh , d_SlaveCoh , CohWinAz, CohWinRg,
+				ArrayPixels, d_pitchCohfloat2);
+
+
+			CohDiffer_vertical_ESD << <PartBlocksDiff, threadsV >> >(d_sum1 ,
+				d_power1 , d_MasterCoh , d_SlaveCoh , CohWinAz, CohWinRg,
+				overlapLines - 1, ArrayPixels,
+				d_pitchCohfloat2, d_pitchCohTmp);
+
+
+
+
+			shfl_vertical_ESD << <GridPrefix, blockSz >> >(d_sum1, numX, OverlapMaxLines, PartSteps);
+			shfl_vertical_ESD << <GridPrefix, blockSz >> >(d_power1, numX, OverlapMaxLines, PartSteps);
+
+			CpCoh2_ESD << <blocks, threads >> >(d_coh1 ,
+				d_sum1 , d_power1 , overlapLines, ArrayPixels, d_pitchCohTmp, d_pitchCohfloat);
+
+
+			//Estimating the coherence of backward overlap band 
+			cudaMemset(d_MasterCoh, 0, d_pitchCohfloat2*cohh);
+			cudaMemset(d_SlaveCoh, 0, d_pitchCohfloat2*cohh);
+
+			CohMatrixSet << <blocks, threads >> >(d_MasterBack , d_SlaveBack ,
+				d_MasterCoh , d_SlaveCoh ,overlapLines, ArrayPixels, dh, dw, d_pitchCohfloat2);
+
+
+			CohFirstLineSet_ESD << <(ArrayPixels + 255) / 256, 256 >> >(d_sum1 ,
+				d_power1 , d_MasterCoh , d_SlaveCoh , CohWinAz, CohWinRg,
+				ArrayPixels, d_pitchCohfloat2);
+
+			CohDiffer_vertical_ESD << <PartBlocksDiff, threadsV >> >(d_sum1 ,
+				d_power1 , d_MasterCoh , d_SlaveCoh , CohWinAz, CohWinRg,
+				overlapLines - 1, ArrayPixels, d_pitchCohfloat2, d_pitchCohTmp);
+
+
+
+			shfl_vertical_ESD << <GridPrefix, blockSz >> >(d_sum1 , numX, OverlapMaxLines, PartSteps);
+			shfl_vertical_ESD << <GridPrefix, blockSz >> >(d_power1 , numX, OverlapMaxLines, PartSteps);
+
+			CpCoh2_ESD << <blocks, threads >> >(d_coh2 ,
+				d_sum1 , d_power1 , overlapLines, ArrayPixels, d_pitchCohTmp, d_pitchCohfloat);
+
+
+
+			//Average the coherence of forward and backward bands
+			Divide2 << <blocks, threads >> > (d_coh1 , d_coh2 , d_pitchCohfloat, overlapLines, ArrayPixels);
+			//cudaStreamSynchronize(stream[i]);
+			//Estimte the double differential interferogram
+			
+			DoubleDifference4OneD << <blocks, threads >> >
+				(d_MasterFor , d_MasterBack ,
+				d_SlaveFor , d_SlaveBack ,
+				overlapLines, ArrayPixels);
+			
+			//Masking out incoherent pixels
+			MaskOut << <blocks, threads >> >(d_SlaveBack , d_coh1 , CohThresHold, overlapLines, ArrayPixels,
+				d_pitchCohfloat);
+
+			//Using parallel recuding operation to accumulate ESD phases
+			cudaMemset(d_blockSum,0, blockNum*sizeof(cuComplex));
+			cudaMemset(d_blockSum,0, blockNum1*sizeof(cuComplex));
+			cudaMemset(d_blockSum,0, sizeof(cuComplex));
+
+			reduce0 << <tmpBlockNum, 256 >> >(d_SlaveBack , d_blockSum , overlapLines*ArrayPixels);
+
+
+			reduce0 << <s, 256 >> >(d_blockSum , d_blockSum1 , tmpBlockNum);
+
+
+			reduce0 << <s1, 256 >> >(d_blockSum1 , d_blockSum2 , (tmpBlockNum + 255) / 256);
+
+			cudaMemcpy(SumOverlap+i, d_blockSum2, 1 * sizeof(cuComplex), cudaMemcpyDeviceToHost);
+			//cudaStreamSynchronize(stream[i]);
+
+		}
+
+	}
+
+
+	
+
+	cudaEventRecord(g_stop, 0);
+	cudaEventSynchronize(g_stop);
+	cudaEventElapsedTime(&time_cost, g_start, g_stop);
+	cout << "ESDCorretion duration:" << time_cost << "ms" << endl;
+	cudaEventDestroy(g_start);
+	cudaEventDestroy(g_stop);
+	//ofstream ShiftOut("E:\\ESDTimer.txt", ios::app);
+	//ShiftOut << time_cost << endl;
+	//ShiftOut.close();
+
+	for (int i = 0; i < numOverlap; i++)
+	{
+
+		ShiftArray[i] = atan2((double)SumOverlap[i].y, (double)SumOverlap[i].x) / (2 * CUDART_PI*spectralSeparation*azimuthTimeInterval);
+	}
+
+
+
+
+
+
+	cudaHostUnregister(MasterFor);
+	cudaHostUnregister(MasterBack);
+	cudaHostUnregister(SlaveFor);
+	cudaHostUnregister(SlaveBack);
+
+	cudaFree(d_MasterFor);
+	cudaFree(d_MasterBack);
+	cudaFree(d_SlaveFor);
+	cudaFree(d_SlaveBack);
+
+
+
+	cudaFree(d_sum1);
+	cudaFree(d_power1);
+	cudaFree(d_MasterCoh);
+	cudaFree(d_SlaveCoh);
+	cudaFree(d_coh1);
+	cudaFree(d_coh2);
+	cudaFree(d_blockSum);
+}
+
+
+void EstESDShifts(
+	complex<short>*MasterFor, //Input
+	complex<short>*MasterBack, //Input
+	complex<float>*SlaveFor,// Input
+	complex<float>*SlaveBack, //Input
+	int* OverlapSizeArray, //Input
+	double * ShiftArray,//Output
+	int numOverlap,
+	int ArrayLines,
+	int ArrayPixels,
+	int CohWinAz,
+	int CohWinRg,
+	int OverlapMaxLines,
+	float CohThresHold,
+	double spectralSeparation,
+	double azimuthTimeInterval
+	)
+{
+	bool OverlaporNot = false;
+
+	if (!OverlaporNot)
+	{
+		 EstESDShifts_NonOverlap(MasterFor, MasterBack, SlaveFor,SlaveBack, 
+			 OverlapSizeArray, ShiftArray,numOverlap, ArrayLines,ArrayPixels,
+			 CohWinAz,CohWinRg,OverlapMaxLines,CohThresHold,spectralSeparation,
+			 azimuthTimeInterval);
+	}
+
+	if (OverlaporNot)
+	{
+		EstESDShifts_Overlap(MasterFor, MasterBack, SlaveFor, SlaveBack,
+			OverlapSizeArray, ShiftArray, numOverlap, ArrayLines, ArrayPixels,
+			CohWinAz, CohWinRg, OverlapMaxLines, CohThresHold, spectralSeparation,
+			azimuthTimeInterval);
+	}
+
+
+
+
+
+
+
+
 
 }

@@ -519,6 +519,180 @@ Interpolation_12p
 
 }
 
+__global__ void
+Interpolation_12p_ESDshift
+(cuComplex *output, int LineOffset, int Lines, size_t CorrPitch_1)
+{
+
+	const unsigned int row = blockIdx.y*blockDim.y + threadIdx.y;
+	const unsigned int col = blockIdx.x*blockDim.x + threadIdx.x;
+
+	cuComplex * rowoutput = (cuComplex *)((char*)output + row*CorrPitch_1);
+
+
+
+
+	if (row < Lines && col < c_mPixels)
+	{
+
+		double Temp[2];
+		Temp[0] = normalizeWarp(col, c_MasterBox[0], c_MasterBox[1]);
+		Temp[1] = normalizeWarp(row + LineOffset + c_mY0, c_MasterBox[2], c_MasterBox[3]);
+
+
+
+
+
+		int IndexesL[2];//[interger index, decimal index]
+		int IndexesP[2];
+
+
+		GetIndexes(my_polyval(Temp[1], Temp[0], c_CpmAz) + d_AzimuthShift, IndexesL);
+		GetIndexes(my_polyval(Temp[1], Temp[0], c_CpmRg), IndexesP);
+
+
+
+
+
+		if (IndexesL[0] > c_sYmax || IndexesL[0]<c_sY0
+			|| IndexesP[0]>c_sXmax || IndexesP[0] < c_sX0)
+		{
+			rowoutput[col] = make_cuComplex(0.0f, 0.0f);
+
+		}
+
+		else if (IndexesL[0]>c_sYmax - c_Npoints2m1 - 2 || IndexesL[0]<c_sY0 + c_Npoints2m1
+			|| IndexesP[0]>c_sXmax - c_Npoints2m1 - 2 || IndexesP[0] < c_sX0 + c_Npoints2m1)
+		{
+			IndexesP[0] -= c_sX0;
+			IndexesL[0] -= c_sY0;
+			cuComplex SlaveArray = tex2D(tex_slave, IndexesP[0], IndexesL[0]);
+			float samplePhase = tex2D(tex_PhaseArray, IndexesP[0], IndexesL[0]);
+
+			sincos(samplePhase, Temp, Temp + 1);
+			rowoutput[col] = cuCmulf(SlaveArray, make_cuComplex(Temp[1], -Temp[0]));
+
+
+
+		}
+		else
+		{
+
+
+			//Read look-up tables of interpolation convolution kernels 
+			float kernelL[12];
+			float kernelP[12];
+
+
+			kernelL[0] = tex2D(tex_kernelAz, 0, IndexesL[1]);
+			kernelL[1] = tex2D(tex_kernelAz, 1, IndexesL[1]);
+			kernelL[2] = tex2D(tex_kernelAz, 2, IndexesL[1]);
+			kernelL[3] = tex2D(tex_kernelAz, 3, IndexesL[1]);
+			kernelL[4] = tex2D(tex_kernelAz, 4, IndexesL[1]);
+			kernelL[5] = tex2D(tex_kernelAz, 5, IndexesL[1]);
+			kernelL[6] = tex2D(tex_kernelAz, 6, IndexesL[1]);
+			kernelL[7] = tex2D(tex_kernelAz, 7, IndexesL[1]);
+			kernelL[8] = tex2D(tex_kernelAz, 8, IndexesL[1]);
+			kernelL[9] = tex2D(tex_kernelAz, 9, IndexesL[1]);
+			kernelL[10] = tex2D(tex_kernelAz, 10, IndexesL[1]);
+			kernelL[11] = tex2D(tex_kernelAz, 11, IndexesL[1]);
+
+			kernelP[0] = tex2D(tex_kernelRg, 0, IndexesP[1]);
+			kernelP[1] = tex2D(tex_kernelRg, 1, IndexesP[1]);
+			kernelP[2] = tex2D(tex_kernelRg, 2, IndexesP[1]);
+			kernelP[3] = tex2D(tex_kernelRg, 3, IndexesP[1]);
+			kernelP[4] = tex2D(tex_kernelRg, 4, IndexesP[1]);
+			kernelP[5] = tex2D(tex_kernelRg, 5, IndexesP[1]);
+			kernelP[6] = tex2D(tex_kernelRg, 6, IndexesP[1]);
+			kernelP[7] = tex2D(tex_kernelRg, 7, IndexesP[1]);
+			kernelP[8] = tex2D(tex_kernelRg, 8, IndexesP[1]);
+			kernelP[9] = tex2D(tex_kernelRg, 9, IndexesP[1]);
+			kernelP[10] = tex2D(tex_kernelRg, 10, IndexesP[1]);
+			kernelP[11] = tex2D(tex_kernelRg, 11, IndexesP[1]);
+
+
+
+
+			cuComplex tempComplex;
+
+
+			cuComplex sum = make_cuComplex(0.0f, 0.0f);
+
+			double sum1 = 0.0;
+			double tempFloat;
+
+			IndexesP[0] -= (c_sX0 + c_Npoints2m1);
+			IndexesL[0] -= (c_sY0 + c_Npoints2m1);
+
+
+
+
+			// Partially unroll the loop to reduce register pressure
+			// Interpolate the slave image at first
+			for (int j = 0; j < 12; ++j)
+			{
+				IndexesL[1] = IndexesL[0] + j;
+				tempComplex =
+					cuCaddf(CmulfFloat(tex2D(tex_slave, IndexesP[0] + 11, IndexesL[1]), kernelP[11]),
+					cuCaddf(CmulfFloat(tex2D(tex_slave, IndexesP[0] + 10, IndexesL[1]), kernelP[10]),
+					cuCaddf(CmulfFloat(tex2D(tex_slave, IndexesP[0] + 9, IndexesL[1]), kernelP[9]),
+					cuCaddf(CmulfFloat(tex2D(tex_slave, IndexesP[0] + 8, IndexesL[1]), kernelP[8]),
+					cuCaddf(CmulfFloat(tex2D(tex_slave, IndexesP[0] + 7, IndexesL[1]), kernelP[7]),
+					cuCaddf(CmulfFloat(tex2D(tex_slave, IndexesP[0] + 6, IndexesL[1]), kernelP[6]),
+					cuCaddf(CmulfFloat(tex2D(tex_slave, IndexesP[0] + 5, IndexesL[1]), kernelP[5]),
+					cuCaddf(CmulfFloat(tex2D(tex_slave, IndexesP[0] + 4, IndexesL[1]), kernelP[4]),
+					cuCaddf(CmulfFloat(tex2D(tex_slave, IndexesP[0] + 3, IndexesL[1]), kernelP[3]),
+					cuCaddf(CmulfFloat(tex2D(tex_slave, IndexesP[0] + 2, IndexesL[1]), kernelP[2]),
+					cuCaddf(CmulfFloat(tex2D(tex_slave, IndexesP[0], IndexesL[1]), kernelP[0]),
+					CmulfFloat(tex2D(tex_slave, IndexesP[0] + 1, IndexesL[1]), kernelP[1])
+					)))))))))));
+
+				sum = cuCaddf(sum, CmulfFloat(tempComplex, kernelL[j]));
+			}
+
+
+
+			//Interpolate the deramping phase
+			for (int j = 0; j < 12; ++j)
+			{
+				IndexesL[1] = IndexesL[0] + j;
+				tempFloat = (double)tex2D(tex_PhaseArray, IndexesP[0], IndexesL[1])* kernelP[0]
+					+ (double)tex2D(tex_PhaseArray, IndexesP[0] + 1, IndexesL[1])*kernelP[1]
+					+ (double)tex2D(tex_PhaseArray, IndexesP[0] + 2, IndexesL[1])*kernelP[2]
+					+ (double)tex2D(tex_PhaseArray, IndexesP[0] + 3, IndexesL[1])*kernelP[3]
+					+ (double)tex2D(tex_PhaseArray, IndexesP[0] + 4, IndexesL[1])*kernelP[4]
+					+ (double)tex2D(tex_PhaseArray, IndexesP[0] + 5, IndexesL[1])*kernelP[5]
+					+ (double)tex2D(tex_PhaseArray, IndexesP[0] + 6, IndexesL[1])*kernelP[6]
+					+ (double)tex2D(tex_PhaseArray, IndexesP[0] + 7, IndexesL[1])*kernelP[7]
+					+ (double)tex2D(tex_PhaseArray, IndexesP[0] + 8, IndexesL[1])*kernelP[8]
+					+ (double)tex2D(tex_PhaseArray, IndexesP[0] + 9, IndexesL[1])*kernelP[9]
+					+ (double)tex2D(tex_PhaseArray, IndexesP[0] + 10, IndexesL[1])*kernelP[10]
+					+ (double)tex2D(tex_PhaseArray, IndexesP[0] + 11, IndexesL[1])*kernelP[11];
+
+
+
+				sum1 = sum1 + tempFloat * kernelL[j];
+				//sum1 = __fma_rn(tempFloat, kernelL[j], sum1);
+
+
+			}
+
+
+			//Compute Sin(sum1) and Cos(sum1) and store them into the Temp Array
+			sincos(sum1, Temp, Temp + 1);
+
+			//Rereamp and output aligned signals
+			rowoutput[col] = cuCmulf(sum, make_cuComplex(Temp[1], -Temp[0]));
+
+
+
+
+
+		}
+	}
+
+}
+
 
 __global__ void
 resample_texture_kernel_12p_warpFunction_raw
@@ -1109,7 +1283,7 @@ resample_kernel_12p_textureTest
 
 
 
-	cudaFuncSetCacheConfig(Interpolation_12p, cudaFuncCachePreferL1);
+	//cudaFuncSetCacheConfig(Interpolation_12p, cudaFuncCachePreferL1); Boosting configuration for kepler architecture 
 	int NumTest = 10;
 
 	float time_cost1, time_cost2;
@@ -1191,7 +1365,7 @@ resample_kernel_12p_textureTest
 	cudaEventRecord(g_stop, 0);
 	cudaEventSynchronize(g_stop);
 	cudaEventElapsedTime(&time_cost2, g_start, g_stop);
-	cout << "kernel duration:" << time_cost2  << endl;
+	cout << "kernel duration:" << time_cost2  <<"ms"<< endl;
 	cudaEventDestroy(g_start);
 	cudaEventDestroy(g_stop);
 	
@@ -1294,16 +1468,20 @@ cuComplex* DerampDemodResample_ESD(
 	//checkCudaErrors(cudaHostRegister(PhaseArray, sLines*sPixels*sizeof(float), cudaHostRegisterDefault));
 	size_t d_pitch1, d_pitch2, d_pitch3, d_pitchS2;
 
+	size_t TotalBytes = 0;
 
 	// It is worth to use another array to save complex<short>
 	float* d_PhaseArray;
 	cudaMallocPitch((void**)&d_PhaseArray, &d_pitch1, sPixels*sizeof(float), sLines);
 
+	
+
 	short2* d_SlaveArrayS2;
 	cudaMallocPitch((void**)&d_SlaveArrayS2, &d_pitchS2, sPixels*sizeof(short2), sLines);
+
 	cuComplex* d_SlaveArray;
 	cudaMallocPitch((void**)&d_SlaveArray, &d_pitch2, sPixels*sizeof(cuComplex), sLines);
-
+	
 
 	double* d_dopplerRate, *d_referenceTime, *d_dopplerCentroid;
 	cudaMallocPitch((void**)&d_dopplerRate, &d_pitch3, SamplesPerBurst*sizeof(double), 1);
@@ -1315,7 +1493,7 @@ cuComplex* DerampDemodResample_ESD(
 
 	cuComplex * d_resample;
 	cudaMallocPitch((void **)&d_resample, &CorrPitch, mPixels*sizeof(cuComplex), mLines);
-
+	
 
 	cudaArray *KernelAzArray = NULL;
 	cudaArray *KernelRgArray = NULL;
@@ -1415,7 +1593,7 @@ cuComplex* DerampDemodResample_ESD(
 
 
 
-	cudaFuncSetCacheConfig(Interpolation_12p, cudaFuncCachePreferL1);
+	//cudaFuncSetCacheConfig(Interpolation_12p, cudaFuncCachePreferL1); Set for more L1 cache. You can comment out to test. This is for Kepler architecture at 
 
 
 	float time_cost1, time_cost2;
@@ -1432,58 +1610,77 @@ cuComplex* DerampDemodResample_ESD(
 
 	if (Npoints == 12)
 	{
+		bool  OverlapOrNot = false; //Using concurrent computing or not
+		if (!OverlapOrNot)
+		{
+			/*resample_texture_kernel_12p_warpFunction_raw << <blocks, threads >> >(d_resample, d_SlaveArray, d_PhaseArray,
+			d_KernelAz, d_KernelRg, d_pitch1, d_pitch2,mLines, CorrPitch);*/
+			//resample_kernel_12p_textureTest << <blocks, threads >> >(d_resample, 0, mLines, CorrPitch);
+
+			//for whole test
+			Interpolation_12p
+				<< <blocks, threads >> >(d_resample, 0,
+				mLines, CorrPitch);
+
+			cudaMemcpy2D(output, mPixels*sizeof(cuComplex),
+				d_resample, CorrPitch, mPixels*sizeof(cuComplex),
+				mLines, cudaMemcpyDeviceToHost);
+
+		}
 
 		//SubSet1
 
-		Interpolation_12p
-			<< <Partblocks, threads, 0, stream[0] >> >(d_resample, 0,
-			partMlines, CorrPitch);
+		if (OverlapOrNot)
+		{
+			Interpolation_12p
+				<< <Partblocks, threads, 0, stream[0] >> >(d_resample, 0,
+				partMlines, CorrPitch);
 
-		cudaMemcpy2DAsync(output, (mPixels)*sizeof(cuComplex), d_resample, CorrPitch, (mPixels)*sizeof(cuComplex), partMlines, cudaMemcpyDeviceToHost, stream[0]);
-
-
-
-		//SubSet2
-		Interpolation_12p
-			<< <Partblocks, threads, 0, stream[1] >> >
-			(d_resample + PartOffsetD, partMlines,
-			partMlines, CorrPitch);
-		cudaMemcpy2DAsync(output + PartOffsetH, (mPixels)*sizeof(cuComplex),
-			d_resample + PartOffsetD, CorrPitch, (mPixels)*sizeof(cuComplex),
-			partMlines, cudaMemcpyDeviceToHost, stream[1]);
-
-		//SubSet3
-
-		Interpolation_12p
-			<< <Partblocks, threads, 0, stream[2] >> >
-			(d_resample + 2 * PartOffsetD, 2 * partMlines,
-			partMlines, CorrPitch);
-		cudaMemcpy2DAsync(output + 2 * PartOffsetH, (mPixels)*sizeof(cuComplex),
-			d_resample + 2 * PartOffsetD, CorrPitch, (mPixels)*sizeof(cuComplex),
-			partMlines, cudaMemcpyDeviceToHost, stream[2]);
+			cudaMemcpy2DAsync(output, (mPixels)*sizeof(cuComplex), d_resample, CorrPitch, (mPixels)*sizeof(cuComplex), partMlines, cudaMemcpyDeviceToHost, stream[0]);
 
 
-		//SubSet4
-		Interpolation_12p
-			<< <Lastblocks, threads, 0, stream[3] >> >
-			(d_resample + 3 * PartOffsetD, 3 * partMlines,
-			partMlines + RemainMlines, CorrPitch);
-		cudaMemcpy2DAsync(output + 3 * PartOffsetH, (mPixels)*sizeof(cuComplex),
-			d_resample + 3 * PartOffsetD, CorrPitch, (mPixels)*sizeof(cuComplex),
-			(partMlines + RemainMlines), cudaMemcpyDeviceToHost, stream[3]);
+
+			//SubSet2
+			Interpolation_12p
+				<< <Partblocks, threads, 0, stream[1] >> >
+				(d_resample + PartOffsetD, partMlines,
+				partMlines, CorrPitch);
+			cudaMemcpy2DAsync(output + PartOffsetH, (mPixels)*sizeof(cuComplex),
+				d_resample + PartOffsetD, CorrPitch, (mPixels)*sizeof(cuComplex),
+				partMlines, cudaMemcpyDeviceToHost, stream[1]);
+
+			//SubSet3
+
+			Interpolation_12p
+				<< <Partblocks, threads, 0, stream[2] >> >
+				(d_resample + 2 * PartOffsetD, 2 * partMlines,
+				partMlines, CorrPitch);
+			cudaMemcpy2DAsync(output + 2 * PartOffsetH, (mPixels)*sizeof(cuComplex),
+				d_resample + 2 * PartOffsetD, CorrPitch, (mPixels)*sizeof(cuComplex),
+				partMlines, cudaMemcpyDeviceToHost, stream[2]);
 
 
+			//SubSet4
+			Interpolation_12p
+				<< <Lastblocks, threads, 0, stream[3] >> >
+				(d_resample + 3 * PartOffsetD, 3 * partMlines,
+				partMlines + RemainMlines, CorrPitch);
+			cudaMemcpy2DAsync(output + 3 * PartOffsetH, (mPixels)*sizeof(cuComplex),
+				d_resample + 3 * PartOffsetD, CorrPitch, (mPixels)*sizeof(cuComplex),
+				(partMlines + RemainMlines), cudaMemcpyDeviceToHost, stream[3]);
+
+		}
 
 
 
 	}
-	//checkCudaErrors(cudaMemcpy2D(output, (mPixels)*sizeof(cuComplex), d_resample, CorrPitch, (mPixels)*sizeof(cuComplex), mLines, cudaMemcpyDeviceToHost));
+	
 
 	
 	cudaEventRecord(g_stop, 0);
 	cudaEventSynchronize(g_stop);
 	cudaEventElapsedTime(&time_cost2, g_start, g_stop);
-	cout << "kernel duration:" << time_cost2 << endl;
+	cout << "kernel duration:" << time_cost2<<"ms" << endl;
 	cudaEventDestroy(g_start);
 	cudaEventDestroy(g_stop);
 
