@@ -398,9 +398,9 @@ bool S1_Initialize(SentinelTOPS& S1, const char* Path, string polar)
 					lastValidPixel_temp = S1.SubSwath[i].lastValidSample[k*LinesPerBurst + lineIdx];
 			}
 
-			S1.SubSwath[i].burstFirstValidLineTime[k] = S1.SubSwath[i].burstFirstLineTime[i] + firstValidLineIdx*S1.SubSwath[i].azimuthTimeInterval;
+			S1.SubSwath[i].burstFirstValidLineTime[k] = S1.SubSwath[i].burstFirstLineTime[k] + firstValidLineIdx*S1.SubSwath[i].azimuthTimeInterval;
 
-			S1.SubSwath[i].burstLastValidLineTime[k] = S1.SubSwath[i].burstFirstLineTime[i] + lastValidLineIdx*S1.SubSwath[i].azimuthTimeInterval;
+			S1.SubSwath[i].burstLastValidLineTime[k] = S1.SubSwath[i].burstFirstLineTime[k] + lastValidLineIdx*S1.SubSwath[i].azimuthTimeInterval;
 
 			S1.SubSwath[i].firstValidLine[k] = firstValidLineIdx;
 			S1.SubSwath[i].lastValidLine[k] = lastValidLineIdx;
@@ -1315,6 +1315,228 @@ double xyz2aztime(double *xyz, int NumOfCoef,
 
 }
 
+/* 
+The following codes are modified from Doris
+add by ysli,201905 @ Newcastle Uni.
+*/
+
+double polyval1d(double x, double  *coeff, int num)
+{
+	double sum = 0.0;
+	if (num > 100000)
+	{
+		return sum;
+	}
+
+	for (register long d = num - 1; d >= 0; --d)
+	{
+		sum *= x;
+		sum += coeff[d];
+	}
+	return sum;
+} // END polyval1d
+
+int getxyz(double *satpos, S1PreciseOrbit  &orb, double t) // const // not, klo,khi
+{
+
+
+	int interp_method = 0;
+
+	interp_method = (orb.NumPoints>6) ? 5 : orb.NumPoints - 2;
+	 
+	//const double t_tmp = (t - time[numberofpoints / 2]) / real8(10.0);     
+	double t_tmp = (t - orb.orbitAzTime[orb.NumPoints / 2]) / 10.0;
+ 
+		
+		satpos[0] = polyval1d(t_tmp, orb.coef_x, interp_method + 1);
+		satpos[1] = polyval1d(t_tmp, orb.coef_y, interp_method + 1);
+		satpos[2] = polyval1d(t_tmp, orb.coef_z, interp_method + 1);
+	 
+	return 0;
+} // END getxyz
+
+
+int getxyzdot(double *velsat, S1PreciseOrbit  &orb, double t)
+{
+	
+	 int interp_method = 0;
+
+	  interp_method = (orb.NumPoints>6) ? 5 : orb.NumPoints - 2;
+
+
+	  velsat[0] = orb.coef_x[1];// a_1*t^0 + 2a_2*t^1 + 3a_3*t^2 + ...
+	  velsat[1] = orb.coef_y[1];
+	  velsat[2] = orb.coef_z[1];
+	   double t_tmp = (t - orb.orbitAzTime[orb.NumPoints / 2]) / 10.0;
+		for (long i = 2; i <= interp_method; ++i)
+		{
+			double powt = double(i)*pow(t_tmp, double(i - 1));
+			velsat[0] += orb.coef_x[i] * powt;
+			velsat[1] += orb.coef_y[i] * powt;
+			velsat[2] += orb.coef_z[i] * powt;
+		}
+		velsat[0] /= double(10.0);// normalization
+		velsat[1] /= double(10.0);// normalization
+		velsat[2] /= double(10.0);// normalization
+	 
+	return 0;
+} // END getxyzdot
+
+
+double  eq_in(double *inpos, double *P)            // scalar product: r=P.in(Q)
+{
+         // scalar product: r=P.in(Q)
+	 return inpos[0] * P[0] + inpos[1] * P[1] + inpos[2] * P[2];
+}
+
+void solve33(
+	double      RESULT[3],
+	double rhs[3],
+	double A[9])
+{
+
+
+	// ______  real8 L10, L20, L21: used lower matrix elements
+	// ______  real8 U11, U12, U22: used upper matrix elements
+	// ______  real8 b0,  b1,  b2:  used Ux=b
+	const double L10 = A[3] / A[0];
+	const double L20 = A[6] / A[0];
+	const double U11 = A[4] - L10*A[1];
+	const double L21 = (A[7] - (A[1] * L20)) / U11;
+	const double U12 = A[5] - L10*A[2];
+	const double U22 = A[8] - L20*A[2] - L21*U12;
+
+	// ______ Solution: forward substitution ______
+	const double b0 = rhs[0];
+	const double b1 = rhs[1] - b0*L10;
+	const double b2 = rhs[2] - b0*L20 - b1*L21;
+
+	// ______ Solution: backwards substitution ______
+	RESULT[2] = b2 / U22;
+	RESULT[1] = (b1 - U12*RESULT[2]) / U11;
+	RESULT[0] = (b0 - A[1] * RESULT[1] - A[2] * RESULT[2]) / A[0];
+} // END solve33
+
+
+
+long lp2xyz(
+	double            line,
+	double            pixel,
+	const ellipsoid_WGS84 &ell,
+	const SubSwathInfo  &image,
+	S1PreciseOrbit       &orb,
+	long  burstNum,
+	double         *returnpos,
+	long            MAXITER,
+	double            CRITERPOS)
+{
+	// TRACE_FUNCTION("lp2xyz (BK 04-Jan-1999)")
+	
+	// ______ Convert lp to time ______
+	const double aztime = image.burstFirstLineTime[burstNum] + (line - 1.0) / image.prf;       //image.line2ta(line);
+
+	const double rangetime = image.slrTimeToFirstPixel + (pixel - 1.0) / (image.rangeSamplingRate*2);
+
+	double possat[3];
+
+	getxyz(&possat[0], orb, aztime); // const // not, klo,khi
+
+	double velsat[3];
+
+	getxyzdot(&velsat[0], orb, aztime); // const // not, klo,khi
+ 
+
+	// ______ Set up system of equations and iterate ______
+	//returnpos[0] = 0;  // iteration 0
+	//returnpos[1] = 0;  // iteration 0
+	//returnpos[2] = 0;  // iteration 0
+
+
+	// ______ Save some alloc, init and dealloc time by declaring static (15%?) ______
+	double solxyz[3];             // solution of system
+	double equationset[3];        // observations
+	double partialsxyz[3 * 3];        // partials to position due to nonlinear
+
+	register long iter;
+	for (iter = 0; iter <= MAXITER; ++iter)
+	{
+
+
+		double dsat_P[3];
+		dsat_P[0] = returnpos[0] - possat[0];
+		dsat_P[1] = returnpos[1] - possat[1];
+		dsat_P[2] = returnpos[2] - possat[2];
+
+		//equationset[0] = -eq1_doppler(velsat, dsat_P);
+		equationset[0] = -eq_in(velsat, dsat_P);
+ 
+
+		//equationset[1] = -eq2_range(dsat_P, ratime);
+		equationset[1] = -1 *(eq_in(dsat_P, dsat_P) - sqr(SOL*rangetime));
+
+       //equationset[2] = -eq3_ellipsoid(returnpos, ell.a, ell.b);
+
+		equationset[2] = -1 * 	((sqr(returnpos[0]) + sqr(returnpos[1])) / sqr(ell.a) + sqr(returnpos[2] / ell.b) - 1.0);
+
+
+		partialsxyz[0] = velsat[0];
+		partialsxyz[1] = velsat[1];
+		partialsxyz[2] = velsat[2];
+		partialsxyz[3] = 2 * dsat_P[0];
+		partialsxyz[4] = 2 * dsat_P[1];
+		partialsxyz[5] = 2 * dsat_P[2];
+		partialsxyz[6] = (2 * returnpos[0]) / sqr(ell.a);
+		partialsxyz[7] = (2 * returnpos[1]) / sqr(ell.a);
+		partialsxyz[8] = (2 * returnpos[2]) / sqr(ell.b);
+	
+
+		// ______ Solve system ______
+		solve33(solxyz, equationset, partialsxyz);
+	 
+		// ______Update solution______
+		returnpos[0] += solxyz[0];                         // update approx. value
+		returnpos[1] += solxyz[1];                         // update approx. value
+		returnpos[2] += solxyz[2];                         // update approx. value
+
+		// ______Check convergence______
+		if (abs(solxyz[0]) < CRITERPOS &&                         // dx
+			abs(solxyz[1]) < CRITERPOS &&                         // dy
+			abs(solxyz[2]) < CRITERPOS)                        // dz
+			break; // converged
+
+	
+	}
+
+	 
+	return iter;
+	
+	return 0;
+} // END lp2xyz
+
+long lp2ell(
+	double            line,
+	double            pixel,
+	const ellipsoid_WGS84 &ellips,
+	const SubSwathInfo  &image,
+	long  burstNum,
+	S1PreciseOrbit &orb,
+	double *returnpos,
+	long            MAXITER = 10,
+	double            CRITERPOS = 1e-6)
+{
+
+	long iter = lp2xyz(line, pixel, ellips, image, orb, burstNum,&returnpos[0], MAXITER, CRITERPOS);
+	 
+	return iter;
+} // END lp2ell
+
+
+// end of additional code//
+ 
+
+ 
+
+
 bool ComputerBurstOverlap(int InputBurst0, int InputBurstN, int &M_burst0, int &M_burstN,
 	int &S_burst0, int &S_burstN, SentinelTOPS &M_S1, SentinelTOPS &S_S1,
 	int SubSwathIndex, S1PreciseOrbit& Morbit, S1PreciseOrbit& Sorbit)
@@ -1337,21 +1559,23 @@ bool ComputerBurstOverlap(int InputBurst0, int InputBurstN, int &M_burst0, int &
 
 	double rgtime_burst0 = (M_S1.SubSwath[SubSwathId].slrTimeToFirstPixel +
 		M_S1.SubSwath[SubSwathId].slrTimeToFirstPixel) / 2.0;
-
-
-	//Interpolating the lat/lon from Geo-located points
 	double lat, lon;
 	lat = getLatitude(M_S1, aztime_burst0, rgtime_burst0, SubSwathId);
 	lon = getLontitude(M_S1, aztime_burst0, rgtime_burst0, SubSwathId);
 
-
-	double xyz[3];
-
-	Geodetic2Geographic(ell, deg2rad(lat), deg2rad(lon), 0.0, xyz);
+     double xyz[3];
+ 
+	 Geodetic2Geographic(ell, deg2rad(lat), deg2rad(lon), 0.0, xyz); //Geo-location points is not precise
+	
+	 // use RD model to calculate the XYZ, add by ysli 20190517
+	lp2ell(M_S1.SubSwath[SubSwathId].linesPerBurst / 2, M_S1.SubSwath[SubSwathId].samplesPerBurst/2, 
+		ell, M_S1.SubSwath[SubSwathId], Burst0, Morbit, &xyz[0]);
 
 
 	double zeroDopplerTime = xyz2aztime(xyz, Sorbit.NumCoeff, Sorbit.coef_x, Sorbit.coef_y, Sorbit.coef_z,
 		aztime_burst0, Sorbit.orbitAzTime[Sorbit.NumPoints / 2]);
+
+
 
 	if (zeroDopplerTime>S_S1.SubSwath[SubSwathId].lastLineTime)
 	{
@@ -1370,7 +1594,10 @@ bool ComputerBurstOverlap(int InputBurst0, int InputBurstN, int &M_burst0, int &
 		{
 			cc++;
 		}
-		S_burst0 = cc - 1;
+		S_burst0 = cc -1;
+
+
+
 
 		if (BurstN - M_burst0 <= S_S1.SubSwath[SubSwathId].numOfBursts - 1 - S_burst0)
 		{
@@ -1399,6 +1626,9 @@ bool ComputerBurstOverlap(int InputBurst0, int InputBurstN, int &M_burst0, int &
 		double xyz[3];
 
 		Geodetic2Geographic(ell, deg2rad(lat), deg2rad(lon), 0.0, xyz);
+
+		lp2ell(S_S1.SubSwath[SubSwathId].linesPerBurst / 2, S_S1.SubSwath[SubSwathId].samplesPerBurst / 2,
+			ell, S_S1.SubSwath[SubSwathId], 0, Sorbit, &xyz[0]);
 
 		double zeroDopplerTime = xyz2aztime(xyz, Morbit.NumCoeff, Morbit.coef_x, Morbit.coef_y, Morbit.coef_z,
 			aztime_burst0, Morbit.orbitAzTime[Morbit.NumPoints / 2]);
@@ -1630,7 +1860,11 @@ bool ComputeDerapPara(SentinelTOPS &S1, S1PreciseOrbit &PreciseOrbit)
 			}
 			elem1 = elem1->NextSiblingElement();
 		}
-		delete[] data;
+		if (data)
+		{
+			delete[] data;
+			data = NULL;
+		}
 		Polynomial *dcBurstList = new Polynomial[S1.SubSwath[i].numOfBursts];
 		if (numbers > S1.SubSwath[i].numOfBursts)
 		{
@@ -1751,9 +1985,16 @@ bool ComputeDerapPara(SentinelTOPS &S1, S1PreciseOrbit &PreciseOrbit)
 			}
 		}
 
-
-		delete[] azFmRateList;
-		delete[] dcBurstList;
+		if (azFmRateList)
+		{
+			delete[] azFmRateList;
+			azFmRateList = NULL;
+		}
+		if (dcBurstList)
+		{
+			delete[] dcBurstList;
+			dcBurstList = NULL;
+		}
 
 		/*************************Compute Reference Time*************************/
 
@@ -1971,8 +2212,10 @@ int GeometricCoreg(SubSwathInfo& M_Swath, SubSwathInfo& S_Swath, S1PreciseOrbit 
 
 
 		if (DemArray != NULL)
+		{
 			delete[] DemArray;
-
+			DemArray = NULL;
+		}
 		cout << "Finish the Geometrical Coregistration on burst No." << burstId + 1 << " of SubSwath No."
 			<< SwathId << "!" << endl;
 	}
@@ -2080,8 +2323,15 @@ int DerampAndResample(SubSwathInfo& M_Swath, SubSwathInfo& S_Swath, TransFormCoe
 	}
 
 	ReSlaveOut.Close();
-	delete[] Slave;
-	delete[] ReSlave;
+	if (Slave)
+	{
+		delete[] Slave;
+		Slave = NULL;
+	}
+	if (ReSlave)
+	{
+		delete[] ReSlave;
+	}
 	return 0;
 }
 
@@ -2145,6 +2395,19 @@ extern "C" cuComplex* ResampleFirstBurst(
 
 
 extern "C" void CoherenceEst_ESD
+(int Dx0,
+int Dy0,
+int Dw,
+int Dh,
+int dx,
+int dy,
+int cohWinRg,
+int cohWinAz,
+complex<short>* masterArray,
+cuComplex* d_slaveArray,
+float* cohdata
+);
+extern "C" void CoherenceEst
 (int Dx0,
 int Dy0,
 int Dw,
@@ -2250,11 +2513,26 @@ int ESDAndCoh(SubSwathInfo& M_Swath, SubSwathInfo& S_Swath, TransFormCoef& TFCoe
 		numOverlap, TotalOverlapLines, samplesPerBurst, coh_az, coh_rg, MaximumLines, cohThreshold,
 		spectralSep, M_Swath.azimuthTimeInterval);
 
-
-	delete[]masterFor;
-	delete[]masterBack;
-	delete[]ReslaveFor;
-	delete[]ReslaveBack;
+	if (masterFor)
+	{
+		delete[]masterFor;
+		masterFor = NULL;
+	}
+	if (masterBack)
+	{
+		delete[]masterBack;
+		masterBack = NULL;
+	}
+	if (ReslaveFor)
+	{
+		delete[]ReslaveFor;
+		ReslaveFor = NULL;
+	}
+	if (ReslaveBack)
+	{
+		delete[]ReslaveBack;
+		ReslaveBack = NULL;
+	}
 
 	for (int k = 0; k < numOverlap; k++)
 	{
@@ -2283,7 +2561,7 @@ int ESDAndCoh(SubSwathInfo& M_Swath, SubSwathInfo& S_Swath, TransFormCoef& TFCoe
 	int startLines = Mburst0*linesPerBurst;
 	for (int b = Mburst0; b <= MburstN; b++)
 	{
-		printf("Progress Info :  burst %d of %d \n", b + 1, M_Swath.numOfBursts);
+		printf("Progress Info :  burst %d  \n", b + 1 );
 
 		int y0 = b*linesPerBurst;
 
@@ -2337,7 +2615,7 @@ int ESDAndCoh(SubSwathInfo& M_Swath, SubSwathInfo& S_Swath, TransFormCoef& TFCoe
 
 
 			//Resample
-			d_ReSlave = DerampDemodResample_ESD(SlaveIn, CpmAz, CpmRg, BurstShifts[b - 1], ReSlaveOut, ReTable.KernelAz,
+			d_ReSlave = DerampDemodResample_ESD(SlaveIn, CpmAz, CpmRg, BurstShifts[b - Mburst0 - 1], ReSlaveOut, ReTable.KernelAz,
 				ReTable.KernelRg, b + burstOffset, sPixels, sLines, MasterBox, SlaveBox, linesPerBurst, samplesPerBurst,
 				M_Swath.azimuthTimeInterval, S_Swath.dopplerRate, S_Swath.referenceTime, S_Swath.dopplerCentroid,
 				12);
@@ -2352,7 +2630,7 @@ int ESDAndCoh(SubSwathInfo& M_Swath, SubSwathInfo& S_Swath, TransFormCoef& TFCoe
 
 
 			//Estimate Coherence
-			CoherenceEst_ESD(0, y0, samplesPerBurst, linesPerBurst, dx, dy, coh_rg, coh_az, MasterIn,
+			CoherenceEst(0, y0, samplesPerBurst, linesPerBurst, dx, dy, coh_rg, coh_az, MasterIn,
 				d_ReSlave, Coh);
 
 			
@@ -2364,11 +2642,26 @@ int ESDAndCoh(SubSwathInfo& M_Swath, SubSwathInfo& S_Swath, TransFormCoef& TFCoe
 
 
 	}
-
-	delete[] Coh;
-	delete[] MasterIn;
-	delete[] SlaveIn;
-	delete[] ReSlaveOut;
+	if (Coh)
+	{
+		delete[] Coh;
+		Coh = NULL;
+	}
+	if (MasterIn)
+	{
+		delete[] MasterIn;
+		MasterIn = NULL;
+	}
+	if (SlaveIn)
+	{
+		delete[] SlaveIn;
+		SlaveIn = NULL;
+	}
+	if (ReSlaveOut)
+	{
+		delete[] ReSlaveOut;
+		ReSlaveOut = NULL;
+	}
 
 
 

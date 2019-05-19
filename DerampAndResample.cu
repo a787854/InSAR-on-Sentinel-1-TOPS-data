@@ -1156,7 +1156,7 @@ resample_kernel_12p_textureTest
 	cudaHostRegister(KernelRg, 2048 * 12 * sizeof(float), cudaHostRegisterDefault);
 
 
-	//checkCudaErrors(cudaHostRegister(PhaseArray, sLines*sPixels*sizeof(float), cudaHostRegisterDefault));
+	// (cudaHostRegister(PhaseArray, sLines*sPixels*sizeof(float), cudaHostRegisterDefault));
 	size_t d_pitch1, d_pitch2, d_pitch3, d_pitchS2;
 
 
@@ -1216,12 +1216,12 @@ resample_kernel_12p_textureTest
 
 
 
-	//checkCudaErrors(cudaMemcpy2DAsync(d_SlaveArray, d_pitch2, SlaveArray, sPixels*sizeof(cuComplex), sPixels*sizeof(cuComplex), sLines, cudaMemcpyHostToDevice));
-	//checkCudaErrors(cudaMemcpy2DAsync(d_dopplerRate, d_pitch3, dopplerRate, SamplesPerBurst*sizeof(double), SamplesPerBurst*sizeof(double), 1, cudaMemcpyHostToDevice));
-	//checkCudaErrors(cudaMemcpy2DAsync(d_referenceTime, d_pitch3, referenceTime, SamplesPerBurst*sizeof(double), SamplesPerBurst*sizeof(double), 1, cudaMemcpyHostToDevice));
-	//checkCudaErrors(cudaMemcpy2DAsync(d_dopplerCentroid, d_pitch3, dopplerCentroid, SamplesPerBurst*sizeof(double), SamplesPerBurst*sizeof(double), 1, cudaMemcpyHostToDevice));
+	// (cudaMemcpy2DAsync(d_SlaveArray, d_pitch2, SlaveArray, sPixels*sizeof(cuComplex), sPixels*sizeof(cuComplex), sLines, cudaMemcpyHostToDevice));
+	// (cudaMemcpy2DAsync(d_dopplerRate, d_pitch3, dopplerRate, SamplesPerBurst*sizeof(double), SamplesPerBurst*sizeof(double), 1, cudaMemcpyHostToDevice));
+	// (cudaMemcpy2DAsync(d_referenceTime, d_pitch3, referenceTime, SamplesPerBurst*sizeof(double), SamplesPerBurst*sizeof(double), 1, cudaMemcpyHostToDevice));
+	// (cudaMemcpy2DAsync(d_dopplerCentroid, d_pitch3, dopplerCentroid, SamplesPerBurst*sizeof(double), SamplesPerBurst*sizeof(double), 1, cudaMemcpyHostToDevice));
 
-	//checkCudaErrors(cudaMemcpy2D(d_SlaveArray, d_pitch2, SlaveArray, sPixels*sizeof(cuComplex), sPixels*sizeof(cuComplex), sLines, cudaMemcpyHostToDevice));
+	// (cudaMemcpy2D(d_SlaveArray, d_pitch2, SlaveArray, sPixels*sizeof(cuComplex), sPixels*sizeof(cuComplex), sLines, cudaMemcpyHostToDevice));
 	cudaMemcpy2D(d_SlaveArrayS2, d_pitchS2, SlaveArray, sPixels*sizeof(short2), sPixels*sizeof(short2), sLines, cudaMemcpyHostToDevice);
 	cudaMemcpy2D(d_dopplerRate, d_pitch3, dopplerRate, SamplesPerBurst*sizeof(double), SamplesPerBurst*sizeof(double), 1, cudaMemcpyHostToDevice);
 	cudaMemcpy2D(d_referenceTime, d_pitch3, referenceTime, SamplesPerBurst*sizeof(double), SamplesPerBurst*sizeof(double), 1, cudaMemcpyHostToDevice);
@@ -1439,6 +1439,7 @@ cuComplex* DerampDemodResample_ESD(
 	)
 {
 
+	cudaDeviceReset();
 
 	int sLines = SlaveBox[3] - SlaveBox[2] + 1;
 	int sPixels = SlaveBox[1] - SlaveBox[0] + 1;
@@ -1465,40 +1466,42 @@ cuComplex* DerampDemodResample_ESD(
 	cudaHostRegister(output, mLines*mPixels*sizeof(cuComplex), cudaHostRegisterDefault);
 
 
-	//checkCudaErrors(cudaHostRegister(PhaseArray, sLines*sPixels*sizeof(float), cudaHostRegisterDefault));
+	// (cudaHostRegister(PhaseArray, sLines*sPixels*sizeof(float), cudaHostRegisterDefault));
 	size_t d_pitch1, d_pitch2, d_pitch3, d_pitchS2;
 
 	size_t TotalBytes = 0;
 
 	// It is worth to use another array to save complex<short>
 	float* d_PhaseArray;
-	cudaMallocPitch((void**)&d_PhaseArray, &d_pitch1, sPixels*sizeof(float), sLines);
-
+	 (cudaMallocPitch((void**)&d_PhaseArray, &d_pitch1, sPixels*sizeof(float), sLines));
+	
 	
 
 	short2* d_SlaveArrayS2;
-	cudaMallocPitch((void**)&d_SlaveArrayS2, &d_pitchS2, sPixels*sizeof(short2), sLines);
+	 (cudaMallocPitch((void**)&d_SlaveArrayS2, &d_pitchS2, sPixels*sizeof(short2), sLines));
+
+
 
 	cuComplex* d_SlaveArray;
-	cudaMallocPitch((void**)&d_SlaveArray, &d_pitch2, sPixels*sizeof(cuComplex), sLines);
+	 (cudaMallocPitch((void**)&d_SlaveArray, &d_pitch2, sPixels*sizeof(cuComplex), sLines));
 	
 
 	double* d_dopplerRate, *d_referenceTime, *d_dopplerCentroid;
-	cudaMallocPitch((void**)&d_dopplerRate, &d_pitch3, SamplesPerBurst*sizeof(double), 1);
-	cudaMallocPitch((void**)&d_referenceTime, &d_pitch3, SamplesPerBurst*sizeof(double), 1);
-	cudaMallocPitch((void**)&d_dopplerCentroid, &d_pitch3, SamplesPerBurst*sizeof(double), 1);
+	 (cudaMallocPitch((void**)&d_dopplerRate, &d_pitch3, SamplesPerBurst*sizeof(double), 1));
+	 (cudaMallocPitch((void**)&d_referenceTime, &d_pitch3, SamplesPerBurst*sizeof(double), 1));
+	 (cudaMallocPitch((void**)&d_dopplerCentroid, &d_pitch3, SamplesPerBurst*sizeof(double), 1));
 
 
 	size_t CorrPitch;
 
 	cuComplex * d_resample;
-	cudaMallocPitch((void **)&d_resample, &CorrPitch, mPixels*sizeof(cuComplex), mLines);
+	 (cudaMallocPitch((void **)&d_resample, &CorrPitch, mPixels*sizeof(cuComplex), mLines));
 	
 
 	cudaArray *KernelAzArray = NULL;
 	cudaArray *KernelRgArray = NULL;
-	cudaMallocArray(&KernelAzArray, &channelDesc_1, Npoints, 2048);
-	cudaMallocArray(&KernelRgArray, &channelDesc_1, Npoints, 2048);
+	 (cudaMallocArray(&KernelAzArray, &channelDesc_1, Npoints, 2048));
+	 (cudaMallocArray(&KernelRgArray, &channelDesc_1, Npoints, 2048));
 
 
 	dim3 threads(16, 16);
@@ -1532,10 +1535,10 @@ cuComplex* DerampDemodResample_ESD(
 	
 
 	
-	cudaMemcpy2D(d_SlaveArrayS2, d_pitchS2, SlaveArray, sPixels*sizeof(short2), sPixels*sizeof(short2), sLines, cudaMemcpyHostToDevice);
-	cudaMemcpy2D(d_dopplerRate, d_pitch3, dopplerRate, SamplesPerBurst*sizeof(double), SamplesPerBurst*sizeof(double), 1, cudaMemcpyHostToDevice);
-	cudaMemcpy2D(d_referenceTime, d_pitch3, referenceTime, SamplesPerBurst*sizeof(double), SamplesPerBurst*sizeof(double), 1, cudaMemcpyHostToDevice);
-	cudaMemcpy2D(d_dopplerCentroid, d_pitch3, dopplerCentroid, SamplesPerBurst*sizeof(double), SamplesPerBurst*sizeof(double), 1, cudaMemcpyHostToDevice);
+	 (cudaMemcpy2D(d_SlaveArrayS2, d_pitchS2, SlaveArray, sPixels*sizeof(short2), sPixels*sizeof(short2), sLines, cudaMemcpyHostToDevice));
+	 (cudaMemcpy2D(d_dopplerRate, d_pitch3, dopplerRate, SamplesPerBurst*sizeof(double), SamplesPerBurst*sizeof(double), 1, cudaMemcpyHostToDevice));
+	 (cudaMemcpy2D(d_referenceTime, d_pitch3, referenceTime, SamplesPerBurst*sizeof(double), SamplesPerBurst*sizeof(double), 1, cudaMemcpyHostToDevice));
+	 (cudaMemcpy2D(d_dopplerCentroid, d_pitch3, dopplerCentroid, SamplesPerBurst*sizeof(double), SamplesPerBurst*sizeof(double), 1, cudaMemcpyHostToDevice));
 
 
 	//DerampDemod_Shared << <blocks, threads >> >(d_PhaseArray, d_SlaveArray, d_dopplerRate, d_referenceTime, d_dopplerCentroid, sX0, sY0, sLines, sPixels, sfirstLineInBurst,
@@ -1544,6 +1547,7 @@ cuComplex* DerampDemodResample_ESD(
 	DerampDemod_Shared << <blocks, threads >> >(d_PhaseArray, d_SlaveArray, d_dopplerRate, d_referenceTime, d_dopplerCentroid, SlaveBox[0], SlaveBox[2], sLines, sPixels, sfirstLineInBurst,
 		azimuthTimeInterval, d_pitch1, d_pitch2, d_pitch3, d_SlaveArrayS2, d_pitchS2);
 
+	 (cudaDeviceSynchronize());
 
 	//cudaEventRecord(g_stop, 0);
 	//cudaEventSynchronize(g_stop);
@@ -1566,8 +1570,8 @@ cuComplex* DerampDemodResample_ESD(
 	//float *d_KernelAz, *d_KernelRg;
 	//cudaMalloc((void**)&d_KernelAz, 2048 * Npoints*sizeof(float));
 	//cudaMalloc((void**)&d_KernelRg, 2048 * Npoints*sizeof(float));
-	//checkCudaErrors(cudaMemcpy(d_KernelAz, KernelAz, 2048 * Npoints*sizeof(float), cudaMemcpyHostToDevice));
-	//checkCudaErrors(cudaMemcpy(d_KernelRg, KernelRg, 2048 * Npoints*sizeof(float), cudaMemcpyHostToDevice));
+	// (cudaMemcpy(d_KernelAz, KernelAz, 2048 * Npoints*sizeof(float), cudaMemcpyHostToDevice));
+	// (cudaMemcpy(d_KernelRg, KernelRg, 2048 * Npoints*sizeof(float), cudaMemcpyHostToDevice));
 
 
 	size_t SPitch, MPitch;
@@ -1601,7 +1605,7 @@ cuComplex* DerampDemodResample_ESD(
 	cudaEventCreate(&g_stop);
 	cudaEventRecord(g_start, 0);
 
-
+	 (cudaDeviceSynchronize());
 	if (Npoints == 6)
 	{
 
@@ -1622,9 +1626,7 @@ cuComplex* DerampDemodResample_ESD(
 				<< <blocks, threads >> >(d_resample, 0,
 				mLines, CorrPitch);
 
-			cudaMemcpy2D(output, mPixels*sizeof(cuComplex),
-				d_resample, CorrPitch, mPixels*sizeof(cuComplex),
-				mLines, cudaMemcpyDeviceToHost);
+		
 
 		}
 
@@ -1676,7 +1678,7 @@ cuComplex* DerampDemodResample_ESD(
 	}
 	
 
-	
+	 (cudaDeviceSynchronize());
 	cudaEventRecord(g_stop, 0);
 	cudaEventSynchronize(g_stop);
 	cudaEventElapsedTime(&time_cost2, g_start, g_stop);
@@ -1684,7 +1686,9 @@ cuComplex* DerampDemodResample_ESD(
 	cudaEventDestroy(g_start);
 	cudaEventDestroy(g_stop);
 
-
+	cudaMemcpy2D(output, mPixels*sizeof(cuComplex),
+		d_resample, CorrPitch, mPixels*sizeof(cuComplex),
+		mLines, cudaMemcpyDeviceToHost);
 
 
 	for (int i = 0; i < 4; i++)
@@ -1692,7 +1696,7 @@ cuComplex* DerampDemodResample_ESD(
 		cudaStreamDestroy(stream[i]);
 	}
 
-
+	 (cudaDeviceSynchronize());
 
 	cudaHostUnregister(SlaveArray);
 	cudaHostUnregister(output);
@@ -1712,7 +1716,7 @@ cuComplex* DerampDemodResample_ESD(
 	cudaFree(d_dopplerRate);
 	cudaFree(d_referenceTime);
 	cudaFree(d_dopplerCentroid);
-	//checkCudaErrors(cudaFree(d_resample));
+	// (cudaFree(d_resample));
 	cudaFreeArray(KernelAzArray);
 	cudaFreeArray(KernelRgArray);
 	cudaFree(d_SlaveArrayS2);

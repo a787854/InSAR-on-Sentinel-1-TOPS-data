@@ -13,6 +13,7 @@
 #include<omp.h>
 #include <complex>
 
+
 using namespace std;
 
 
@@ -409,7 +410,7 @@ __global__ void CpCoh2(float *Res, cuComplex *Sum1Array, cuComplex *Power1Array,
 
 }
 
-__global__ void Cohbasic(float *Result, int inputLines, int inputPixels, size_t DstPitch)
+__global__ void Cohbasic(float *Result, int inputLines, int inputPixels, size_t DstPitch, cuComplex*JudgeArray,size_t complexpitch)
 {
 
 
@@ -433,7 +434,7 @@ __global__ void Cohbasic(float *Result, int inputLines, int inputPixels, size_t 
 
 				sum1 = cuCaddf(sum1, tex2D(tex_input, i, row + j));
 				power1 = cuCaddf(power1, tex2D(tex_norms, i, row + j));
-
+				
 
 			}
 		}
@@ -441,9 +442,16 @@ __global__ void Cohbasic(float *Result, int inputLines, int inputPixels, size_t 
 		float p = power1.x*power1.y;
 
 		float* rowResult = (float *)((char*)Result + row*DstPitch);
+		cuComplex* rowJudgeArray = (cuComplex *)((char*)JudgeArray + row*complexpitch);
+		if (cuCabsf(rowJudgeArray[col])<0.001)
+		{
+			rowResult[col] = 0.0f;
+		}
+		else
+		{
 
-
-		rowResult[col] = (p > 0.0f) ? cuCabsf((cuCdivf(sum1, make_cuComplex(sqrt(p), 0.0f)))) : 0.0f;
+			rowResult[col] = (p > 0.0f) ? cuCabsf((cuCdivf(sum1, make_cuComplex(sqrt(p), 0.0f)))) : 0.0f;
+		}
 	}
 }
 
@@ -485,6 +493,7 @@ float* cohdata
 	size_t FloatPitch3;
 
 
+	
 	cudaMallocPitch((void**)&d_TempMasterArray, &FloatPitch, Dw*sizeof(short2), Dh);// For copy in complex<short> data
 
 	
@@ -494,11 +503,14 @@ float* cohdata
 	int cohw = Dw + cohWinRg - 1;
 	int cohh = Lines + cohWinAz - 1;
 	cudaMallocPitch((void**)&d_CohMat_Amp, &FloatPitch, Dw*sizeof(float), Lines);
+	
+	
 
 	
 
 	cudaMallocPitch((void**)&d_Sum1, &Pitch, Dw*sizeof(cuComplex), Lines);
 	cudaMallocPitch((void**)&d_Power1, &Pitch, Dw*sizeof(cuComplex), Lines);
+	
 
 	int Nstep = Lines / 8;
 
@@ -526,6 +538,7 @@ float* cohdata
 	size_t Pitch2;
 	cudaMallocPitch((void**)&d_masterArray2, &Pitch2, cohw*sizeof(cuComplex), cohh);
 	cudaMallocPitch((void**)&d_slaveArray2, &Pitch2, cohw*sizeof(cuComplex), cohh);
+;
 
 
 	cudaMemcpyToSymbol(c_Dy0, &Dy0, sizeof(int), 0, cudaMemcpyHostToDevice);
@@ -566,8 +579,8 @@ float* cohdata
 
 
 	//Windows does not need to memset the array with zero values
-	//checkCudaErrors(cudaMemsetAsync(d_masterArray2, 0, Pitch2*cohh, stream1));
-	//checkCudaErrors(cudaMemsetAsync(d_slaveArray2, 0, Pitch2*cohh, stream1));
+	// (cudaMemsetAsync(d_masterArray2, 0, Pitch2*cohh, stream1));
+	// (cudaMemsetAsync(d_slaveArray2, 0, Pitch2*cohh, stream1));
 
 
 
@@ -661,7 +674,7 @@ float* cohdata
 	
 	if (BasicOrNot)
 	{
-		Cohbasic << <Outblocks, threads, 0, stream[3] >> >(d_CohMat_Amp, Dh, Dw, FloatPitch);
+		Cohbasic << <Outblocks, threads, 0, stream[3] >> >(d_CohMat_Amp, Dh, Dw, FloatPitch,d_slaveArray,Pitch);
 
 		cudaMemcpy2D(cohdata, Dw*sizeof(float),
 			d_CohMat_Amp, FloatPitch, Dw*sizeof(float), Dh, cudaMemcpyDeviceToHost);
@@ -715,8 +728,209 @@ float* cohdata
 
 
 
+extern "C" void CoherenceEst_Basic
+(int Dx0,
+int Dy0,
+int Dw,
+int Dh,
+int dx,
+int dy,
+int cohWinRg,
+int cohWinAz,
+complex<short>* masterArray,
+cuComplex* d_slaveArray,
+float* cohdata
+)
+{
+	int dataBytes = Dw*Dh*sizeof(complex<float>);
+
+	cudaHostRegister(cohdata, dataBytes / 2.0, cudaHostRegisterDefault);
+	cudaHostRegister(masterArray, dataBytes / 2.0, cudaHostRegisterDefault);
 
 
+	size_t Pitch3;
+
+	cuComplex*d_masterArray = NULL;
+	cuComplex* d_masterArray2 = NULL;
+	cuComplex *d_slaveArray2 = NULL;
+	short2* d_TempMasterArray;
+
+	float *d_CohMat_Amp = NULL;
+	size_t FloatPitch;
+	size_t Pitch;
+	size_t FloatPitch3;
+
+
+	size_t TotalBytes = 0;
+	cudaMallocPitch((void**)&d_TempMasterArray, &FloatPitch, Dw*sizeof(short2), Dh);// For copy in complex<short> data
+	
+
+
+	//for vertical prefix sum arrays
+	int Lines = MultipleOf32(Dh);
+	int cohw = Dw + cohWinRg - 1;
+	int cohh = Lines + cohWinAz - 1;
+	
+
+	cuComplex* PitchArray;
+	cudaMallocPitch((void**)&PitchArray, &Pitch, Dw*sizeof(cuComplex), 1);
+	cudaFree(PitchArray);
+
+	size_t Pitch2;
+	cudaMallocPitch((void**)&d_masterArray2, &Pitch2, cohw*sizeof(cuComplex), cohh);
+	cudaMallocPitch((void**)&d_slaveArray2, &Pitch2, cohw*sizeof(cuComplex), cohh);
+
+
+
+	cudaMemcpyToSymbol(c_Dy0, &Dy0, sizeof(int), 0, cudaMemcpyHostToDevice);
+	cudaMemcpyToSymbol(c_Dw, &Dw, sizeof(int), 0, cudaMemcpyHostToDevice);
+	cudaMemcpyToSymbol(c_Dh, &Dh, sizeof(int), 0, cudaMemcpyHostToDevice);
+	cudaMemcpyToSymbol(c_winY, &cohWinAz, sizeof(int), 0, cudaMemcpyHostToDevice);
+	cudaMemcpyToSymbol(c_winX, &cohWinRg, sizeof(int), 0, cudaMemcpyHostToDevice);
+
+	cudaChannelFormatDesc channelDesc_Complex = cudaCreateChannelDesc(32, 32, 0, 0, cudaChannelFormatKindFloat);
+
+
+	dim3 threads(16, 16);
+	dim3 Outblocks = dim3((Dw + threads.x - 1) / threads.x, (Dh + threads.y - 1) / threads.y);
+	dim3 Cohblocks = dim3((cohw + threads.x - 1) / threads.x, (cohh + threads.y - 1) / threads.y);
+
+
+
+
+
+
+
+
+
+	
+	 (cudaMemcpy2D(d_TempMasterArray, FloatPitch, masterArray, Dw*sizeof(short2),
+		Dw*sizeof(short2), Dh, cudaMemcpyHostToDevice));
+
+
+
+
+
+	//Windows does not need to memset the array with zero values
+	// (cudaMemsetAsync(d_masterArray2, 0, Pitch2*cohh, stream1));
+	// (cudaMemsetAsync(d_slaveArray2, 0, Pitch2*cohh, stream1));
+
+
+
+	CohMatSet << <Outblocks, threads >> >
+		(d_masterArray2, d_slaveArray2, d_TempMasterArray, d_slaveArray, Dh,
+		Dw, Pitch2, Pitch, FloatPitch, dx, dy);
+
+	
+	
+	
+
+	cudaMallocPitch((void**)&d_CohMat_Amp, &FloatPitch, Dw*sizeof(float), Lines);
+
+
+	//BindTexture
+	cudaBindTexture2D(0, tex_input, d_masterArray2, channelDesc_Complex, cohw, cohh, Pitch2);
+	cudaBindTexture2D(0, tex_norms, d_slaveArray2, channelDesc_Complex, cohw, cohh, Pitch2);
+
+
+
+	dim3 threadsV(16, 16);
+	dim3 blocks = dim3((Dw + threadsV.x - 1) / threadsV.x, (Dh - 1 + threadsV.y - 1) / threadsV.y);
+
+
+
+	cudaEvent_t g_start, g_stop;
+	float time_cost1;
+	cudaEventCreate(&g_start);
+	cudaEventCreate(&g_stop);
+	cudaEventRecord(g_start, 0);
+
+
+
+	//Basic Coherence estimation
+
+
+	Cohbasic << <Outblocks, threads >> >(d_CohMat_Amp, Dh, Dw, FloatPitch, d_slaveArray, Pitch);
+	
+	 (cudaMemcpy2D(cohdata, Dw*sizeof(float),
+			d_CohMat_Amp, FloatPitch, Dw*sizeof(float), Dh, cudaMemcpyDeviceToHost));
+
+
+
+
+
+	
+	cudaEventRecord(g_stop, 0);
+	cudaEventSynchronize(g_stop);
+	 (cudaEventElapsedTime(&time_cost1, g_start, g_stop));
+	cout << "Basic coherence kernel duration:" << time_cost1 << "ms" << endl;
+	cudaEventDestroy(g_start);
+	cudaEventDestroy(g_stop);
+	 (cudaDeviceSynchronize());
+
+	cudaHostUnregister(cohdata);
+	cudaHostUnregister(masterArray);
+
+
+
+
+
+
+
+
+
+	cudaUnbindTexture(tex_input);
+	cudaUnbindTexture(tex_norms);
+
+
+	 (cudaFree(d_CohMat_Amp));
+
+	 (cudaFree(d_masterArray2));
+	 (cudaFree(d_slaveArray2));
+	
+	 (cudaFree(d_slaveArray));
+	 (cudaFree(d_TempMasterArray));
+
+	cudaDeviceReset();
+
+
+
+}
+
+
+extern "C" void CoherenceEst
+(int Dx0,
+int Dy0,
+int Dw,
+int Dh,
+int dx,
+int dy,
+int cohWinRg,
+int cohWinAz,
+complex<short>* masterArray,
+cuComplex* d_slaveArray,
+float* cohdata
+)
+{
+	bool GPUMemSmall = true; 
+
+	//if the total memory is less than 2Gb, go to coherence basic estimation version.
+	if (GPUMemSmall)
+	{
+		CoherenceEst_Basic(Dx0, Dy0, Dw, Dh, dx, dy, cohWinRg, cohWinAz, masterArray,
+			d_slaveArray, cohdata);
+	}
+	else
+	{
+		CoherenceEst_ESD(Dx0, Dy0, Dw, Dh, dx, dy, cohWinRg, cohWinAz, masterArray,
+			d_slaveArray, cohdata);
+
+	}
+	
+
+
+
+}
 
 
 
