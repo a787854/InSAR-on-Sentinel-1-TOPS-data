@@ -701,7 +701,7 @@ void EstESDShifts_Overlap(
 
 	bool OverlaporNot = false;
 
-	int ArrayPixels42 = ArrayPixels % 2 ? ArrayPixels42 + 1 : ArrayPixels;
+	int ArrayPixels42 = ArrayPixels % 2 ? ArrayPixels + 1 : ArrayPixels;
 	dim3 threadsV(128, 2);
 	cudaEvent_t g_start, g_stop;
 	float time_cost;
@@ -1051,7 +1051,7 @@ void EstESDShifts_NonOverlap(
 
 	bool OverlaporNot = false;
 
-	int ArrayPixels42 = ArrayPixels % 2 ? ArrayPixels42 + 1 : ArrayPixels;
+	int ArrayPixels42 = ArrayPixels % 2 ? ArrayPixels + 1 : ArrayPixels;
 	dim3 threadsV(128, 2);
 	cudaEvent_t g_start, g_stop;
 	float time_cost;
