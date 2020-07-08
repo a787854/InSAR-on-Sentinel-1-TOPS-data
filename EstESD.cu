@@ -15,7 +15,7 @@
 #include<time.h>
 #include<complex>
 #include <iostream>
-#include <helper_cuda.h>
+//#include <helper_cuda.h>
 
 
 
