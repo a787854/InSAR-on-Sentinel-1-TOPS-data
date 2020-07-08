@@ -6,10 +6,10 @@
 #include <iostream>
 #include <complex>
 #include <fstream>
-#include "../include/ogr_api.h"
-#include "../include/ogr_core.h"
-#include "../include/ogr_srs_api.h"
-#include "../include/gdal.h"
+#include "ogr_api.h"
+#include "ogr_core.h"
+#include "ogr_srs_api.h"
+#include "gdal.h"
 
 using namespace std;
 
@@ -220,7 +220,7 @@ class RefDem
 	void getData(int x0, int y0, int ww, int hh, short* demBuffer);
 	void getData(double lat_min, double lat_max, double lon_min, double lon_max, double extralat,
 		double extralon, short*&demBuffer, int& Lines, int& Pixels);
-	void RefDem::getData(double lat_min, double lat_max, double lon_min, double lon_max, double extralat,
+	void getData(double lat_min, double lat_max, double lon_min, double lon_max, double extralat,
 		double extralon, int*&demBuffer, int& Lines, int& Pixels);
 	void getIndex(double lat, double lon, double Res[2]);
 	
