@@ -53,6 +53,7 @@ Research Paper:
 
 
 How to compile this file:
+
 Regarding my environment, I used the VS2017 as the IDE and CUDA 10.1 as the GPU toolkit to compile the all codes (VS2013 and CUDA 8.0 also works). 
 
 Here are the steps which should be noted in compilation:
