@@ -5,6 +5,7 @@
 #include "tinyxml2.h"
 #include "Constants.h"
 #include "cuComplex.h"
+#include <ctime>
 
 using namespace tinyxml2;
 

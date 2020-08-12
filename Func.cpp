@@ -699,6 +699,8 @@ void getDoubleArray(string str, char gap, double *Array)
 
 }
 
+
+
 bool S1_OrbitInitialize(S1PreciseOrbit &Orbit,
 	const  char * Path, const char *firstUTC, const char *lastUTC, string MissionID)
 {
@@ -812,10 +814,38 @@ bool S1_OrbitInitialize(S1PreciseOrbit &Orbit,
 
 
 	return true;
+
+	
+}
+
+time_t strTime2unix(const char*timeStamp)
+{
+	struct tm tm;
+	memset(&tm, 0, sizeof(tm));
+
+	sscanf(timeStamp, "%d-%d-%d %d:%d:%d",
+		&tm.tm_year, &tm.tm_mon, &tm.tm_mday,
+		&tm.tm_hour, &tm.tm_min, &tm.tm_sec);
+
+	tm.tm_year -= 1900;
+	tm.tm_mon--;
+
+	return mktime(&tm);
+}
+time_t  addDay(time_t time1, int days)
+{
+	return (time1 + days * 60 * 60 * 24 + 28800);
+
+}
+time_t minusDay(time_t time1, int days)
+{
+	return (time1 - (days * 60 * 60 * 24 - 28800));
+
 }
 
 bool CheckOribtFile(string PreciseOrbit, string UTCtime, string MissionID)
 {
+	int monthDays[12] = { 31,28,31,30,31,30,31,31,30,31,30,31 };
 
 	//Check Date
 	char buff[100];
@@ -826,9 +856,40 @@ bool CheckOribtFile(string PreciseOrbit, string UTCtime, string MissionID)
 	sscanf_s(UTCtime.c_str(), "%d-%d-%dT%d:%d:%d", &years, &months,
 		&days, &hours, &mins, &secs);
 
+	
+	time_t t_unix = strTime2unix(UTCtime.c_str());
+	
+	
+	time_t t_unix_before = minusDay(t_unix, 1);
+	
 
-	sprintf(buff, "%04d%02d%02d", years, months, days - 1);
-	sprintf(buff1, "%04d%02d%02d", years, months, days + 1);
+	struct tm *p_before = gmtime(&t_unix_before);
+
+
+	strftime(buff, sizeof(buff), "%Y%m%d", p_before);
+
+	
+
+	time_t t_unix_after = addDay(t_unix, 1);
+	struct tm *p_after = gmtime(&t_unix_after);
+
+	
+
+
+	strftime(buff1, sizeof(buff1), "%Y%m%d", p_after);
+	
+
+
+
+
+	
+		//sprintf(buff, "%04d%02d%02d", years, months, days - 1);
+	
+	
+		//sprintf(buff, "%04d%02d%02d", years, months-1, monthDays[months - 1-1]);
+	
+
+	//sprintf(buff1, "%04d%02d%02d", years, months, days + 1);
 
 	string str_start, str_end;
 	int length = PreciseOrbit.length();
@@ -836,12 +897,21 @@ bool CheckOribtFile(string PreciseOrbit, string UTCtime, string MissionID)
 	str_start = PreciseOrbit.substr(length - 35, 8);
 	str_end = PreciseOrbit.substr(length - 19, 8);
 
+	
+
+
+	
+
+
 	if ((str_start != string(buff) || str_end != string(buff1))
 		)
 	{
 		cout << "The date of file is not valid. Please check it." << endl;
+		
 		return false;
 	}
+	
+
 
 	if (strstr(PreciseOrbit.c_str(), MissionID.c_str()) == NULL)
 	{
