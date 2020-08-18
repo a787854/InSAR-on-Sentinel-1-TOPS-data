@@ -13,7 +13,7 @@ Please find it at:https://github.com/leethomason/tinyxml2
 
 Platform:
 
-It is suggested to use the GPUs with powerful double floating computing.
+It is suggested to use the GPUs with powerful double floating computing (compute capability>=3.0).
 Otherwise, the accuracy of coregistration is not guaranteed. 
 To achieve a better performance, the driver mode of GPU should be set as TCC mode. 
 
@@ -26,9 +26,9 @@ Config File:
 
 process_dir= Current Working Directory
 
-masterpath=The Folder of Master Image
+masterpath=The Path to the Master Image
 
-slavepath=The Folder of Slave Image
+slavepath=The Path to the Slave Image
 
 preciseOrbitMaster=The Path to the Master Precise Orbit File
 
