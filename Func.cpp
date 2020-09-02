@@ -2533,14 +2533,17 @@ int ESDAndCoh(SubSwathInfo& M_Swath, SubSwathInfo& S_Swath, TransFormCoef& TFCoe
 
 
 	//Output Azimuth Coregistration residual
-	string logfiles = string(ReSlaveESDFile) + ".log";
+	
+
+	
+	/*string logfiles = string(ReSlaveESDFile) + ".log";
 	fstream fout;
 	fout.open(logfiles.c_str(), ios::out);
 	if (!fout.is_open())
 	{
 		cout << "output azoffset logfile error !\n";
 		return 1;
-	}
+	}*/
 	char buff[100];
 
 	double* BurstShifts = new double[numOverlap];
@@ -2606,8 +2609,17 @@ int ESDAndCoh(SubSwathInfo& M_Swath, SubSwathInfo& S_Swath, TransFormCoef& TFCoe
 
 	for (int k = 0; k < numOverlap; k++)
 	{
-		cout << "Shift Residual:" << BurstShifts[k] << endl;
+		cout << "Shift Residual:" << BurstShifts[k];
+		if (fabs(BurstShifts[k])>100)
+		{
+			cout << "----Invalid Value, will be reset as zero!";
+			BurstShifts[k] = 0;
+		}
+		cout << endl;
 	}
+
+
+	//remove the invalid shifts.
 
 
 
@@ -2736,7 +2748,7 @@ int ESDAndCoh(SubSwathInfo& M_Swath, SubSwathInfo& S_Swath, TransFormCoef& TFCoe
 
 
 	SlaveRaw.Close();
-	fout.close();
+	//fout.close();
 	MasterOverlap.Close();
 	ReSlaveOverlap.Close();
 	ReSlaveESD.Close();

@@ -321,8 +321,8 @@ __global__ void shfl_vertical(cuComplex *Src, int width, int height, int Nstep)
 
 		for (int i = 1; i <= 8; i *= 2)
 		{
-			float n_x = __shfl_up(partial_sum_x, i, 32);
-			float n_y = __shfl_up(partial_sum_y, i, 32);// removed for debug
+			float n_x = __shfl_up_sync(0xffffffff, partial_sum_x, i, 32);
+			float n_y = __shfl_up_sync(0xffffffff, partial_sum_y, i, 32);// removed for debug
 			//float n_x = 0;
 			//float n_y = 0;
 			if (lane_id >= i)

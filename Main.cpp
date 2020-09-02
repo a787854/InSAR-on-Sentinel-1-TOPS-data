@@ -9,6 +9,7 @@
 
 int main()
 {
+	
 	ConfigSet S1Config;
 	string ConfigPath="config.txt";
 	if (!ReadInput(S1Config, ConfigPath.c_str()))
@@ -31,6 +32,8 @@ int main()
 
 	S1PreciseOrbit Morbit;
 	S1PreciseOrbit Sorbit;
+
+
 
 	//Reading Precise Orbit Info 
 	S1_OrbitInitialize(Morbit, S1Config.preciseOrbitMaster.c_str(), M_S1.SubSwath[0].firstLineUTC.c_str(),
@@ -136,7 +139,7 @@ int main()
 
 
 
-	return 1;
+	return 0;
 }
 
 
