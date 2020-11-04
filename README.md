@@ -15,7 +15,9 @@ Platform:
 
 It is suggested to use the GPUs with powerful double floating computing (compute capability>=3.0).
 Otherwise, the accuracy of coregistration is not guaranteed. 
-To achieve a better performance, the driver mode of GPU should be set as TCC mode. 
+To achieve a better performance, the driver mode of GPU should be set as TCC mode (in windows). 
+For a Linux user, you do not need to care about the driver mode. 
+You can go to [this project by Guido Lemoine ](https://github.com/glemoine62/InSAR-on-Sentinel-1-TOPS-data-POSIX)  to check the linux version of this code.
 
 
 Our testing platform:
