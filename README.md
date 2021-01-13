@@ -1,30 +1,22 @@
 # InSAR-on-Sentinel-1-TOPS-data
-This code is developed under Visual Studio 2013 and CUDA toolkit 8.0.
-The software makes use of Graphic Processing Unit to perform Geometric coregistration, resampling, ESD and Coherence Estimation on Sentinel-1 TOPS data.
 
-This software dependents on two libraries:
-
-1.TinyXml2:
-
-Please find it at:https://github.com/leethomason/tinyxml2
-
-2.GDAL.
+The software makes use of Graphic Processing Unit (GPUs) to carry out Geometric coregistration, resampling, ESD and Coherence Estimation on Sentinel-1 TOPS data.
+Relevant algorithm details and speed test you can refer to the paper:
+"GPU accelerated interferometric SAR processing for Sentinel-1 TOPS data" (2019), Computers and Geosciences, Doi: https://doi.org/10.1016/j.cageo.2019.04.010.
+There is also a speed test reported at [this project by Guido Lemoine ](https://github.com/glemoine62/InSAR-on-Sentinel-1-TOPS-data-POSIX).
 
 
-Platform:
-
-It is suggested to use the GPUs with powerful double floating computing (compute capability>=3.0).
-Otherwise, the accuracy of coregistration is not guaranteed. 
-To achieve a better performance, the driver mode of GPU should be set as TCC mode (in windows). 
-For a Linux user, you do not need to care about the driver mode. 
-You can go to [this project by Guido Lemoine ](https://github.com/glemoine62/InSAR-on-Sentinel-1-TOPS-data-POSIX)  to check the linux version of this code.
+# Platform:
+The code is developed under windows operating system .  
+For a Linux user,  you may go to [this project by Guido Lemoine ](https://github.com/glemoine62/InSAR-on-Sentinel-1-TOPS-data-POSIX)  to check the linux version of this code.
 
 
-Our testing platform:
-GPU: Nvidia GTX Titan black  CPU:Intel I7-6700K
+# GPU hardware:
+A GPU (with >=3.0 compute capability) is sufficient.
+Double precision computing capability is appreciated to improve the accuracy of coregistration. 
 
 
-Config File:
+# Basic Configuration File:
 
 process_dir= Current Working Directory
 
@@ -48,15 +40,20 @@ lastsubswath=The End Proccesing Subswath
 
 polarisation=Specific polarisation types
 
-Research Paper:
-"GPU accelerated interferometric SAR processing for Sentinel-1 TOPS data" (2019), Computers and Geosciences, Doi: https://doi.org/10.1016/j.cageo.2019.04.010.
 
 
+# How to compile 
+
+library dependency:
+
+1.TinyXml2:
+
+Please find it at:https://github.com/leethomason/tinyxml2
+
+2.GDAL.
 
 
-How to compile this file:
-
-Regarding my environment, I used the VS2017 as the IDE and CUDA 10.1 as the GPU toolkit to compile the all codes (VS2013 and CUDA 8.0 also works). 
+Compilation using VS and cuda toolkit:
 
 Here are the steps which should be noted in compilation:
 
