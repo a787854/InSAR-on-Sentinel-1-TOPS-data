@@ -75,6 +75,6 @@ Here are the steps which should be noted in compilation:
 
 If you meet some specific problems, please contact me!
 
-Contact:
+# Contact:
 filippoyu0717@gmail.com
 
