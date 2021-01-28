@@ -321,7 +321,7 @@ double* SlaveRg, size_t CorrPitch_1)
 				sum1 = make_cuComplex(0.0f, 0.0f);
 			}
 
-			/*行卷积获得最终结果*/
+			/*脨脨戮铆禄媒禄帽碌脙脳卯脰脮陆谩鹿没*/
 			sum = cuCaddf(cuCaddf(cuCaddf(cuCaddf(cuCaddf(cuCmulf(Result[0], kernelL[0]), cuCmulf(Result[1], kernelL[1])), cuCmulf(Result[2], kernelL[2])), cuCmulf(Result[3], kernelL[3])),
 				cuCmulf(Result[4], kernelL[4])), cuCmulf(Result[5], kernelL[5]));
 			sum1 = cuCaddf(cuCaddf(cuCaddf(cuCaddf(cuCaddf(cuCmulf(Result1[0], kernelL[0]), cuCmulf(Result1[1], kernelL[1])), cuCmulf(Result1[2], kernelL[2])), cuCmulf(Result1[3], kernelL[3])),
@@ -1404,7 +1404,14 @@ resample_kernel_12p_textureTest
 	cudaFreeArray(KernelRgArray);
 	cudaFree(d_SlaveArrayS2);
 
-	
+	cudaDeviceSynchronize();
+	int cuda_last_error_flag = cudaGetLastError();
+
+	if (cuda_last_error_flag != 0)
+	{
+		printf("Returns an error code (%d) from GPU execution!\n Please debug it or report it to developer!\n", cuda_last_error_flag);
+		exit(0);
+	}
 
 	
 	cudaDeviceReset();
@@ -1720,7 +1727,15 @@ cuComplex* DerampDemodResample_ESD(
 	cudaFreeArray(KernelAzArray);
 	cudaFreeArray(KernelRgArray);
 	cudaFree(d_SlaveArrayS2);
+	
+	cudaDeviceSynchronize();
+	int cuda_last_error_flag = cudaGetLastError();
 
+	if (cuda_last_error_flag != 0)
+	{
+		printf("Returns an error code (%d) from GPU execution!\n Please debug it or report it to developer!\n", cuda_last_error_flag);
+		exit(0);
+	}
 
 
 	cuComplex *d_output = d_resample;
