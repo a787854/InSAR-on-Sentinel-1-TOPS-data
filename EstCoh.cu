@@ -719,7 +719,16 @@ float* cohdata
 	cudaFree(d_Power1);
 	cudaFree(d_Sum1);
 	cudaFree(d_TempMasterArray);
+	
+	cudaDeviceSynchronize();
+	int cuda_last_error_flag = cudaGetLastError();
 
+	if (cuda_last_error_flag != 0)
+	{
+		printf("Returns an error code (%d) from GPU execution!\n Please debug it or report it to developer!\n", cuda_last_error_flag);
+		exit(0);
+	}
+	
 	cudaDeviceReset();
 
 
@@ -890,6 +899,15 @@ float* cohdata
 	
 	 (cudaFree(d_slaveArray));
 	 (cudaFree(d_TempMasterArray));
+	 
+	cudaDeviceSynchronize();
+	int cuda_last_error_flag = cudaGetLastError();
+
+	if (cuda_last_error_flag != 0)
+	{
+		printf("Returns an error code (%d) from GPU execution!\n Please debug it or report it to developer!\n", cuda_last_error_flag);
+		exit(0);
+	}
 
 	cudaDeviceReset();
 
