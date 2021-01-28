@@ -895,6 +895,15 @@ void GeoCoreg_warp_cuda(
 		cudaFree(d_m_azimuthTime);
 		cudaFree(d_s_azimuthTime);
 	}
+	
+	cudaDeviceSynchronize();
+	int cuda_last_error_flag = cudaGetLastError();
+
+	if (cuda_last_error_flag != 0)
+	{
+		printf("Returns an error code (%d) from GPU execution!\n Please debug it or report it to developer!\n", cuda_last_error_flag);
+		exit(0);
+	}
 
 	cudaDeviceReset();
 
