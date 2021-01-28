@@ -895,6 +895,16 @@ void EstESDShifts_Overlap(
 
 	//delete[] SumOverlap;
 	cudaFreeHost(SumOverlap);
+	
+	cudaDeviceSynchronize();
+	int cuda_last_error_flag = cudaGetLastError();
+
+	if (cuda_last_error_flag != 0)
+	{
+		printf("Returns an error code (%d) from GPU execution!\n Please debug it or report it to developer!\n", cuda_last_error_flag);
+		exit(0);
+	}
+	
 	cudaDeviceReset();
 	delete[] PrefixOvlines;
 	
@@ -1230,6 +1240,15 @@ void EstESDShifts_NonOverlap(
 	cudaFree(d_coh1);
 	cudaFree(d_coh2);
 	cudaFree(d_blockSum);
+	
+	cudaDeviceSynchronize();
+	int cuda_last_error_flag = cudaGetLastError();
+
+	if (cuda_last_error_flag != 0)
+	{
+		printf("Returns an error code (%d) from GPU execution!\n Please debug it or report it to developer!\n", cuda_last_error_flag);
+		exit(0);
+	}
 }
 
 
