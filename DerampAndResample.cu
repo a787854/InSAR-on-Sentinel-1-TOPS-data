@@ -1240,16 +1240,15 @@ resample_kernel_12p_textureTest
 	//cout << "DeRamping duration:" << time_cost1 << endl;
 
 	
-	
+
+	//float *d_KernelAz;
+	//float *d_KernelRg;
+	//cudaMalloc((void**)&d_KernelAz, Npoints * 2048 * sizeof(float));
+	//cudaMalloc((void**)&d_KernelRg, Npoints * 2048 * sizeof(float));
+	//cudaMemcpy(d_KernelAz, KernelAz, Npoints * 2048 * sizeof(float), cudaMemcpyHostToDevice);
+	//cudaMemcpy(d_KernelRg, KernelRg, Npoints * 2048 * sizeof(float), cudaMemcpyHostToDevice);
 
 
-
-	float *d_KernelAz;
-	float *d_KernelRg;
-	cudaMalloc((void**)&d_KernelAz, Npoints * 2048 * sizeof(float));
-	cudaMalloc((void**)&d_KernelRg, Npoints * 2048 * sizeof(float));
-	cudaMemcpy(d_KernelAz, KernelAz, Npoints * 2048 * sizeof(float),cudaMemcpyDeviceToHost);
-	cudaMemcpy(d_KernelRg, KernelRg, Npoints * 2048 * sizeof(float), cudaMemcpyDeviceToHost);
 
 	cudaMemcpyToArray(KernelAzArray, 0, 0, KernelAz, Npoints * 2048 * sizeof(float), cudaMemcpyHostToDevice);
 	cudaMemcpyToArray(KernelRgArray, 0, 0, KernelRg, Npoints * 2048 * sizeof(float), cudaMemcpyHostToDevice);
@@ -1257,6 +1256,7 @@ resample_kernel_12p_textureTest
 	cudaBindTextureToArray(tex_kernelRg, KernelRgArray, channelDesc_1);
 	cudaBindTexture2D(0, tex_PhaseArray, d_PhaseArray, channelDesc_1, sPixels, sLines, d_pitch1);
 	cudaBindTexture2D(0, tex_slave, d_SlaveArray, channelDesc, sPixels, sLines, d_pitch2);
+
 
 
 	size_t SPitch, MPitch;
@@ -1355,7 +1355,7 @@ resample_kernel_12p_textureTest
 		//	d_resample + 3 * PartOffsetD, CorrPitch, (mPixels)*sizeof(cuComplex), 
 		//	(partMlines + RemainMlines), cudaMemcpyDeviceToHost, stream[3]);
 
-		
+
 
 		
 
@@ -1368,16 +1368,17 @@ resample_kernel_12p_textureTest
 	cout << "kernel duration:" << time_cost2  <<"ms"<< endl;
 	cudaEventDestroy(g_start);
 	cudaEventDestroy(g_stop);
+
 	
 	cudaMemcpy2D(output, mPixels*sizeof(cuComplex),
 		d_resample, CorrPitch, mPixels*sizeof(cuComplex),
 		mLines, cudaMemcpyDeviceToHost);
 
-
 	for (int i = 0; i < 4; i++)
 	{
 		cudaStreamDestroy(stream[i]);
 	}
+
 
 
 
@@ -1389,10 +1390,12 @@ resample_kernel_12p_textureTest
 	cudaHostUnregister(KernelAz);
 	cudaHostUnregister(KernelRg);
 
+
 	cudaUnbindTexture(tex_kernelAz);
 	cudaUnbindTexture(tex_kernelRg);
 	cudaUnbindTexture(tex_slave);
 	cudaUnbindTexture(tex_PhaseArray);
+
 
 	cudaFree(d_PhaseArray);
 	cudaFree(d_SlaveArray);
@@ -1413,6 +1416,7 @@ resample_kernel_12p_textureTest
 		exit(0);
 	}
 
+	//exit(0);
 	
 	cudaDeviceReset();
 
@@ -1703,7 +1707,7 @@ cuComplex* DerampDemodResample_ESD(
 		cudaStreamDestroy(stream[i]);
 	}
 
-	 (cudaDeviceSynchronize());
+
 
 	cudaHostUnregister(SlaveArray);
 	cudaHostUnregister(output);
@@ -1712,6 +1716,7 @@ cuComplex* DerampDemodResample_ESD(
 	cudaHostUnregister(referenceTime);
 	cudaHostUnregister(KernelAz);
 	cudaHostUnregister(KernelRg);
+
 
 	cudaUnbindTexture(tex_kernelAz);
 	cudaUnbindTexture(tex_kernelRg);

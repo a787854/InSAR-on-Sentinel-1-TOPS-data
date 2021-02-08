@@ -1865,7 +1865,7 @@ void computeDC(double AzTime, Polynomial* Input, int N, Polynomial &Res)
 }
 
 
-bool ComputeDerapPara(SentinelTOPS &S1, S1PreciseOrbit &PreciseOrbit)
+bool ComputeDerampPara(SentinelTOPS &S1, S1PreciseOrbit &PreciseOrbit)
 {
 	Polynomial* DCEstimateList;
 	for (int i = 0; i < S1.NumSubSwath; i++)
@@ -2391,7 +2391,7 @@ int DerampAndResample(SubSwathInfo& M_Swath, SubSwathInfo& S_Swath, TransFormCoe
 			<< SwathId << "!" << endl;
 
 	}
-
+	SlaveIn.Close();
 	ReSlaveOut.Close();
 	if (Slave)
 	{
@@ -2413,7 +2413,9 @@ int DerampAndResample(SubSwathInfo& M_Swath, SubSwathInfo& S_Swath, TransFormCoe
 *3.Estimate coherence.                                       *
 *************************************************************/
 double GetSpectralSep(SubSwathInfo& M_Swath);
+
 void cpOverlapSize(SubSwathInfo& M_Swath, int* OverlapSize, int Mburst0, int MburstN);
+
 void EstOverlapSize(SubSwathInfo& M_Swath, int* OverlapSize, int Mburst0, int MburstN, int& TotalLines,
 	int& MaximumLines);
 
@@ -2758,6 +2760,176 @@ int ESDAndCoh(SubSwathInfo& M_Swath, SubSwathInfo& S_Swath, TransFormCoef& TFCoe
 
 
 	return 0;
+}
+
+
+int getLineIdxInMetaData(SubSwathInfo &mSubswath, double targetLineTime,int m_burst0, int m_burstN)
+{
+	int sy0 = -1;
+	int sy1 = -1;
+	int burstNum0 = -1;
+	int burstNum1 = -1;
+	double midTime = 0;
+	int k = 0;
+	for (int i = 0; i < mSubswath.numOfBursts; i++)
+	{
+		if (targetLineTime >= mSubswath.burstFirstLineTime[i] && targetLineTime < mSubswath.burstLastLineTime[i])
+		{
+			int sy = i * mSubswath.linesPerBurst +
+				(int)(((targetLineTime - mSubswath.burstFirstLineTime[i]) / mSubswath.azimuthTimeInterval) + 0.5);
+
+			if (k == 0)
+			{
+				sy0 = sy;
+				burstNum0 = i;
+			}
+			else
+			{
+				sy1 = sy;
+				burstNum1 = i;
+				break;
+			}
+			++k;
+		}
+	}
+
+	if (sy0 != -1 && sy1 != -1)
+	{
+		if (burstNum1 == m_burst0)
+			return sy1;
+
+		if (burstNum1 == m_burstN + 1)
+			return sy0;
+
+		// find time between bursts midTime
+		// use first burst if targetLineTime is before midTime
+		midTime = (mSubswath.burstLastLineTime[burstNum0] +
+			mSubswath.burstFirstLineTime[burstNum1]) / 2.0;
+
+		if (targetLineTime > midTime)
+			return sy1;
+	}
+
+	if (targetLineTime < mSubswath.burstLastLineTime[mSubswath.numOfBursts - 1] + mSubswath.azimuthTimeInterval&&
+		targetLineTime >= mSubswath.burstLastLineTime[mSubswath.numOfBursts - 1])
+	{
+		sy0 = mSubswath.numOfLines - 1;
+	}
+
+	return sy0;
+}
+
+int Stitch_OneSubswath(SubSwathInfo& M_Swath, const char* GappedImg, const char* StitchFile,int m_burst0, int m_burstN,
+	int data_type)
+{
+	double targetFirstLineTime = M_Swath.burstFirstValidLineTime[m_burst0];
+	double targetLastLineTime = M_Swath.burstLastValidLineTime[m_burstN];
+	double targetLineTimeInterval = M_Swath.azimuthTimeInterval;
+
+	double targetSlantRangeTimeToFirstPixel = M_Swath.slrTimeToFirstPixel;
+	double targetSlantRangeTimeToLastPixel = M_Swath.slrTimeToLastPixel;
+	double targetDeltaSlantRangeTime = M_Swath.rangePixelSpacing / SOL;
+
+
+	int yMin = (targetFirstLineTime - M_Swath.firstLineTime) / targetLineTimeInterval;
+	int yMax = (targetLastLineTime - M_Swath.firstLineTime) / targetLineTimeInterval;
+
+	int xMin = 0;
+	int xMax = M_Swath.samplesPerBurst - 1;
+
+	int width = xMax - xMin + 1;
+	int height = yMax - yMin + 1;
+
+	TiffRead GappedIn;
+	TiffWrite ReStitchOut;
+
+	GappedIn.Init(GappedImg);
+	
+	ReStitchOut.Init(StitchFile, data_type, width, height);
+
+	//only support three kinds of data
+	complex<short> * data_CInt16 = new complex<short> [width];
+	float* data_Float32 = new float[width];
+	complex<float>* data_Cpxfloat32 = new complex<float>[width];
+
+
+	for (int y = yMin; y <= yMax; y++)
+	{
+		int yy = y - yMin;
+		printf("Stitching Progress Info : %.2f%%\r", yy*100.0 / height);
+
+
+		double LineTime = targetFirstLineTime + yy * targetLineTimeInterval;
+	
+		int lineIndex = getLineIdxInMetaData(M_Swath, LineTime, m_burst0,m_burstN);
+
+		if (lineIndex == -1)
+		{
+			printf("error occured in the function (Stitch_OneSubswath) when \
+					trying to get line index in meta data \n");
+			
+			system("pause");
+			exit(0);
+			
+		}
+
+		
+		if (data_type == GDT_CInt16)
+		{
+			lineIndex -= m_burst0 * M_Swath.linesPerBurst;
+			
+			memset(data_CInt16, 0, sizeof(complex<short>)*width);
+			GappedIn.ReadCpxShort( xMin, lineIndex, 1,width, data_CInt16);
+
+			ReStitchOut.WriteCpxShort(0, yy,1,width,data_CInt16);
+		}
+
+		else if (data_type == GDT_Float32)
+		{
+			lineIndex -= m_burst0 * M_Swath.linesPerBurst;
+
+			memset(data_Float32, 0, sizeof(float)*width);
+			GappedIn.ReadFloat(xMin, lineIndex, 1, width, data_Float32);
+
+			ReStitchOut.WriteFloat(0, yy, 1, width, data_Float32);
+		
+		}
+
+		else if (data_type == GDT_CFloat32)
+		{
+			lineIndex -= m_burst0 * M_Swath.linesPerBurst;
+
+			memset(data_Cpxfloat32, 0, sizeof(complex<float>)*width);
+
+			GappedIn.ReadCpxFloat(xMin, lineIndex, 1, width, data_Cpxfloat32);
+
+			ReStitchOut.WriteCpxFloat(0, yy, 1, width, data_Cpxfloat32);
+		}
+
+		else
+		{
+			cout << "unsupported image type for the stitching step!\n";
+			system("pause");
+			exit(0);
+		}
+
+	}
+	cout << endl;
+
+
+
+
+
+
+
+	delete[] data_CInt16; data_CInt16 = NULL;
+	delete[] data_Float32; data_Float32 = NULL;
+	delete[] data_Cpxfloat32; data_Cpxfloat32 = NULL;
+
+	GappedIn.Close();
+	ReStitchOut.Close();
+
+	return 1;
 }
 
 void EstOverlapSize(SubSwathInfo& M_Swath, int* OverlapSize, int Mburst0, int MburstN, int& TotalLines,

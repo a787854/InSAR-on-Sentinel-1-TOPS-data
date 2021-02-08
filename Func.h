@@ -64,7 +64,7 @@ bool ComputerBurstOverlap(int InputBurst0, int InputBurstN, int &M_burst0, int &
 
 bool CheckSpecificDem(const char *dempath, double lat_min, double lat_max,
 	double lon_min, double lon_max);
-bool ComputeDerapPara(SentinelTOPS &S1, S1PreciseOrbit &PreciseOrbit);
+bool ComputeDerampPara(SentinelTOPS &S1, S1PreciseOrbit &PreciseOrbit);
 //Init resample look up table
 bool InKernelInit(ResampleTable &ReTable, int Npoints, double prf, double abw, double rsr2x);
 //Geometrical Coregistration
@@ -80,6 +80,9 @@ int DerampAndResample(SubSwathInfo& M_Swath, SubSwathInfo& S_Swath, TransFormCoe
 int ESDAndCoh(SubSwathInfo& M_Swath, SubSwathInfo& S_Swath, TransFormCoef& TFCoef,
 	int Mburst0, int MburstN, int Sburst0, int SburstN, int SwathId, ResampleTable& ReTable,
 	const char *ReSlaveFile, const char* ReSlaveESDFile, const char*Cohout);
+
+int Stitch_OneSubswath(SubSwathInfo& M_Swath, const char* GappedImg, const char* StitchFile, int m_burst0, int m_burstN,
+	int data_type);
 
 
 

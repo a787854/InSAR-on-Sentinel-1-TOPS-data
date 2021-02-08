@@ -61,8 +61,8 @@ int main()
 	/********************************************************************/
 	/*Compute Deramping Parameters*/
 	/********************************************************************/
-	ComputeDerapPara(M_S1, Morbit);
-	ComputeDerapPara(S_S1, Sorbit);
+	ComputeDerampPara(M_S1, Morbit);
+	ComputeDerampPara(S_S1, Sorbit);
 
 
 	/********************************************************************/
@@ -87,6 +87,7 @@ int main()
 		string ReSlaveFile = S1Config.process_dir + "\\ReSlave" + string(buff) + ".tif";
 		string ReSlaveESDFile = S1Config.process_dir + "\\ReSlaveESD" + string(buff) + ".tif";
 		string CohFile = S1Config.process_dir + "\\Coh" + string(buff) + ".tif";
+		
 
 		/********************************************************************/
 		/*Check and estimate the burst overlap between Master and Slave*/
@@ -119,7 +120,20 @@ int main()
 			M_burst0, M_burstN, S_burst0, S_burstN, NSubS, S1ReTable,
 			ReSlaveFile.c_str() , ReSlaveESDFile.c_str(), CohFile.c_str());
 
+		//optional image stitching for one subswath
+		if (0)
+		{//A simple code to stitch 
+			string CohStitchFile = S1Config.process_dir + "\\CohStitch" + string(buff) + ".tif";
+
+			//this function is used for stitching the aligned slave images.
+			Stitch_OneSubswath(M_S1.SubSwath[NSubS - 1], CohFile.c_str(), CohStitchFile.c_str(), M_burst0,
+				M_burstN, GDT_Float32);
+
+		}
+
 	}
+
+	
 
 	//clearing
 	M_S1.clear();
@@ -128,6 +142,8 @@ int main()
 	Sorbit.clear();
 	TransC.clear();
 	S1ReTable.clear();
+
+
 
 
 
