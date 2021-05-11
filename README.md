@@ -1,7 +1,7 @@
 # InSAR-on-Sentinel-1-TOPS-data
 
 The software makes use of Graphic Processing Unit (GPUs) to carry out Geometric coregistration, resampling, ESD and Coherence Estimation on Sentinel-1 TOPS data.
-Relevant algorithm details and speed test you can refer to the paper:
+Relevant algorithm details and speed test is reported in the paper:
 "GPU accelerated interferometric SAR processing for Sentinel-1 TOPS data" (2019), Computers and Geosciences, Doi: https://doi.org/10.1016/j.cageo.2019.04.010.
 There is also a speed test reported at [here ](https://github.com/glemoine62/InSAR-on-Sentinel-1-TOPS-data-POSIX).
 
