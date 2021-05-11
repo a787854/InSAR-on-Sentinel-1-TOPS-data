@@ -56,7 +56,6 @@ Please go to [here](https://github.com/leethomason/tinyxml2).
 
 Compilation using VS and cuda toolkit:
 
-Here are the steps which should be noted in compilation:
 
 1. Create a new empty win console application project (without pre-compiled header).
 
@@ -72,7 +71,7 @@ Here are the steps which should be noted in compilation:
 
 7. Project -> Properties -> Configuration Properties -> CUDA C/C++ -> Device -> Code Generation -> compute_35, sm_35 (higher than 35, and choose an appropriate option according to your card’s compute capability);
 
-8. Note : "This function or variable may be unsafe. Consider using sprintf_s instead", please include this two lines in the Pre-processor Definitions : _CRT_SECURE_NO_WARNINGS , _CRT_NONSTDC_NO_DEPRECATE.
+8. Note : "This function or variable may be unsafe. Consider using sprintf_s instead", please include these two lines in the Pre-processor Definitions : _CRT_SECURE_NO_WARNINGS , _CRT_NONSTDC_NO_DEPRECATE.
 
 If you meet some specific problems, please contact me!
 
