@@ -68,7 +68,13 @@ int SubSwathInfo::clear()
 		if (latlonBurst != NULL)
 			delete[]latlonBurst;
 
-		return 1;
+		if (DcPolynomial != NULL)
+			delete[] DcPolynomial;
+
+		if (azFmRatePolynomial != NULL)
+			delete[] azFmRatePolynomial;
+
+		return 0;
 	}
 
 
@@ -638,6 +644,20 @@ void TiffWrite::WriteCpxFloat(int x0, int y0, int Lines, int Pixels, complex<flo
 
 
 	GDALRasterIO(hBand, GF_Write, x0, y0, Pixels, Lines, Buffer, Pixels, Lines, GDT_CFloat32, 0, 0);
+}
+
+void TiffWrite::WriteCpxShort(int x0, int y0, int Lines, int Pixels, complex<short> *Buffer)
+{
+	if (pData_Out == NULL)
+	{
+		cout << "please initilize createUpdataImage first !\n";
+		system("pause");
+		exit(0);
+	}
+	GDALRasterBandH hBand = GDALGetRasterBand(pData_Out, 1);
+
+
+	GDALRasterIO(hBand, GF_Write, x0, y0, Pixels, Lines, Buffer, Pixels, Lines, GDT_Int16, 0, 0);
 }
 
 void TiffWrite::Close()

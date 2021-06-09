@@ -103,6 +103,8 @@ public:
 	double* dopplerRate;
 	double* referenceTime;
 	double* dopplerCentroid;
+	double* DcPolynomial;
+	double* azFmRatePolynomial;
 
 
 	// GeoLocationGridPoint
@@ -280,6 +282,7 @@ public:
 	void WriteFloat(int x0, int y0, int Lines, int Pixels, float *Buffer);
 	void WriteDouble(int x0, int y0, int Lines, int Pixels, double *Buffer);
 	void WriteCpxFloat(int x0, int y0, int Lines, int Pixels, complex<float> *Buffer);
+	void WriteCpxShort(int x0, int y0, int Lines, int Pixels, complex<short> *Buffer);
 	void Close();
 };
 #endif // DATATYPES_H
